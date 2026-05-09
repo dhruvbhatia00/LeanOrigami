@@ -20,8 +20,10 @@ theorem fold_is_perpendicular_bisector (L : Line) (P₁ P₂ : Point) (hL : vali
     -- Clear the denominators and solve the polynomial identity
     field_simp [hd]
 
-def perpendicular_bisector (P₁ P₂ : Point) : Line :=
-  ![(P₁ 1 - P₂ 1), (P₂ 0 - P₁ 0), (P₁ 0 * P₂ 1 - P₂ 0 * P₁ 1)]
+noncomputable def perpendicular_bisector (P₁ P₂ : Point) : Line :=
+  ![(P₁ 0 - P₂ 0),
+    (P₁ 1 - P₂ 1),
+    ((P₁ 0)^2 - (P₂ 0)^2 + (P₁ 1)^2 - (P₂ 1)^2) / 2]
 --iff statement of axiom2
 theorem axiom2_characterization (L : Line) (P₁ P₂ : Point) (hL : valid L) :
   Axiom2 L P₁ P₂ ↔ ∃ a : ℝ, a ≠ 0 ∧ L = scaled a (perpendicular_bisector P₁ P₂) := by
