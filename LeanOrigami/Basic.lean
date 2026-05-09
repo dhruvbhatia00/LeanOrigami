@@ -97,22 +97,22 @@ variable (L L₁ L₂ : Line) (P P₁ P₂ : Point) (hL : valid L) (hL₁ : vali
 def Axiom1 (P₁ : Point) (P₂ : Point) (L : Line) : Prop :=
   is_contained L P₁ ∧ is_contained L P₂
 
-def Axiom2 : Prop :=
+def Axiom2 (P₁ P₂ : Point) (L : Line) : Prop :=
     folds_onto L P₁ P₂
 
 def Axiom3 (L₁ : Line) (L₂ : Line) (L : Line) : Prop :=
   reflect_line L₁ L =  L₂
 
-def Axiom4 : Prop :=
-    is_contained L P ∧ perpendicular L₁ L
+def Axiom4 (L₁ : Line) (P₁ : Point) (L : Line) : Prop :=
+    is_contained L P₁ ∧ perpendicular L₁ L
 
 def Axiom5 (P₁ : Point) (P₂ : Point) (L₁ : Line) (L : Line) : Prop :=
   is_contained L P₂ ∧ is_contained L₁ (reflect L P₁)
 
-def Axiom6 : Prop :=
+def Axiom6 (P₁ : Point) (P₂ : Point) (L₁ : Line) (L₂ : Line) (L : Line) : Prop :=
     is_contained L₁ (reflect L P₁) ∧ is_contained L₂ (reflect L P₂)
 
-def Axiom7 : Prop :=
+def Axiom7 (L₁ : Line) (P : Point) (L : Line) : Prop :=
     is_contained L₁ (reflect L P) ∧ perpendicular L₁ L
 
 
