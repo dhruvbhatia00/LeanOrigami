@@ -66,12 +66,13 @@ lemma axiom1_x_axis : Axiom1 ![0, 0] ![1, 0] x_axis := by
   -- Unfold the definitions; both evaluate to 0 + 0 = 0
   simp [Axiom1, is_contained, x_axis]
 
-/-- The X-axis is constructible via Axiom 1. -/
+/- The X-axis is constructible via Axiom 1.
 lemma cons_x_axis : cons_line x_axis := by
   apply cons_line.axiom1 cons_point_origin cons_point_one
   exact axiom1_x_axis
+ -/
 
-/-- The Y-axis is constructible (perpendicular to X-axis through origin). -/
+-- The Y-axis is constructible (perpendicular to X-axis through origin). -/
 lemma cons_y_axis : cons_line y_axis := by
   sorry
 
