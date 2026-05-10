@@ -31,11 +31,13 @@ def reflect : Point :=
 
 lemma reflect_fix_of_contains (hLP : is_contained L P) (h : (L 0) ^ 2 + (L 1) ^ 2 ≠ 0) :
   reflect L P = P := by
-    simp [reflect, is_contained] at *;
-    ext i; by_cases hi : i = 0;
-    · simp [hi, h]; right;
-      rw [hLP]; simp
-    · sorry;
+  simp [reflect, is_contained] at *
+  ext i
+  fin_cases i <;> simp [h]
+  · rw [hLP]
+    simp
+  · rw [hLP]
+    simp
 
 
 def reflect_line : Line :=
@@ -46,14 +48,48 @@ def reflect_line : Line :=
   - c₂ * (a₁^2 + b₁^2) + 2 * c₁ * (a₁ * a₂ + b₁ * b₂)]
 
 
+def point_slope_form (m : Option ℝ) (P : Point) : Line :=
+  match m with
+  | some a => ![-a, 1, P 1 - (P 0)*a]
+  | none => ![1, 0, P 0]
+
+
 def intersects_at : Prop :=
   is_contained L₁ P ∧ is_contained L₂ P
 
-lemma intersection_coords :
+lemma intersection_coords
+    (hdet : L₁ 0 * L₂ 1 - L₂ 0 * L₁ 1 ≠ 0) :
   let a₁ := L₁ 0; let b₁ := L₁ 1; let c₁ := L₁ 2
   let a₂ := L₂ 0; let b₂ := L₂ 1; let c₂ := L₂ 2
-intersects_at L₁ L₂ P → P = ![(b₂*c₁ - b₁*c₂)/(a₁*b₂ - a₂*b₁), (c₂* a₁ - c₁ * a₂)/(a₁ * b₂ - b₁ * a₂)] :=
-sorry
+  intersects_at L₁ L₂ P →
+    P =
+      ![(b₂ * c₁ - b₁ * c₂) / (a₁ * b₂ - a₂ * b₁),
+        (c₂ * a₁ - c₁ * a₂) / (a₁ * b₂ - b₁ * a₂)] := by
+  dsimp only
+  intro h
+  rcases h with ⟨h1, h2⟩
+  simp [is_contained] at h1 h2 ⊢
+  ext i
+  fin_cases i
+  · simp
+    have hx :
+        (L₁ 0 * L₂ 1 - L₂ 0 * L₁ 1) * P 0 =
+          L₂ 1 * L₁ 2 - L₁ 1 * L₂ 2 := by
+      linear_combination L₂ 1 * h1 - L₁ 1 * h2
+    rw [← hx]
+    field_simp [hdet]
+  · simp
+    have hdet' : L₁ 0 * L₂ 1 - L₁ 1 * L₂ 0 ≠ 0 := by
+      convert hdet using 1
+      ring
+    have hy :
+        (L₁ 0 * L₂ 1 - L₁ 1 * L₂ 0) * P 1 =
+          L₁ 0 * L₂ 2 - L₂ 0 * L₁ 2 := by
+      linear_combination L₁ 0 * h2 - L₂ 0 * h1
+    rw [show L₂ 2 * L₁ 0 - L₁ 2 * L₂ 0 =
+        L₁ 0 * L₂ 2 - L₂ 0 * L₁ 2 by ring]
+    rw [← hy]
+    field_simp [hdet']
 
 def perpendicular : Prop :=
   let a₁ := L₁ 0; let b₁ := L₁ 1;
