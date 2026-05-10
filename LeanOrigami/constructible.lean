@@ -60,15 +60,15 @@ lemma cons_point_one : cons_point ![1, 0] :=
   cons_point.hOne _ rfl
 
 lemma constructible_real_of_point_x {P : Point} (hP : cons_point P) :
-    constructible_real (P 0) :=
+    constructible_real_proj (P 0) :=
   ⟨P, hP, Or.inl rfl⟩
 
 lemma constructible_real_of_point_y {P : Point} (hP : cons_point P) :
-    constructible_real (P 1) :=
+    constructible_real_proj (P 1) :=
   ⟨P, hP, Or.inr rfl⟩
 
-lemma constructible_real_zero : constructible_real 0 :=
+lemma constructible_real_zero : constructible_real_proj 0 :=
   constructible_real_of_point_x cons_point_origin
 
-lemma constructible_real_one : constructible_real 1 :=
+lemma constructible_real_one : constructible_real_proj 1 :=
   constructible_real_of_point_x cons_point_one
