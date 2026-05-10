@@ -101,7 +101,7 @@ lemma is_parallel_symm (L₁ L₂ : Line) :
 
 def point_slope_form (m : Option ℝ) (P : Point) : Line :=
   match m with
-  | some a => ![-a, 1, P 1 - P 0 * a]
+  | some a => ![-a, 1, (P 1) - (P 0) * a]
   | none => ![1, 0, P 0]
 
 lemma point_slope_form_contains (m : Option ℝ) (P : Point) :
