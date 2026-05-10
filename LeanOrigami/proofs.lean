@@ -26,7 +26,7 @@ noncomputable def perpendicular_bisector (P₁ P₂ : Point) : Line :=
     ((P₁ 0)^2 - (P₂ 0)^2 + (P₁ 1)^2 - (P₂ 1)^2) / 2]
 --iff statement of axiom2
 theorem axiom2_characterization (L : Line) (P₁ P₂ : Point) (hL : valid L) :
-  Axiom2 L P₁ P₂ ↔ ∃ a : ℝ, a ≠ 0 ∧ L = scaled a (perpendicular_bisector P₁ P₂) := by
+  Axiom2  P₁ P₂ L ↔ ∃ a : ℝ, a ≠ 0 ∧ L = scaled a (perpendicular_bisector P₁ P₂) := by
 constructor
 · sorry
 · sorry
@@ -36,11 +36,209 @@ def perp_line (L₁ : Line) (P : Point) : Line :=
   ![- L₁ 1, L₁ 0, -(L₁ 1) * P 0 + (L₁ 0) * P 1]
 
 /-- Any line L satisfying Axiom 4 is a scaled version of the perpendicular line. -/
-theorem axiom4_is_perp_line (L : Line) (L₁ : Line) (P : Point) :
-  Axiom4 L L₁ P ↔
+theorem axiom4_is_perp_line (L L₁ : Line) (P : Point) (hL : valid L) (hL₁ : valid L₁) :
+  Axiom4 L₁ P L ↔
   ∃ a : ℝ, a ≠ 0 ∧ L = scaled a (perp_line L₁ P) := by
-  sorry
+  constructor
+  · -- Forward direction: Axiom 4 implies scaled perp_line
+    intro h
+    rcases h with ⟨h_cont, h_perp⟩
+    simp only [is_contained, perpendicular] at h_cont h_perp
 
+    -- Provide the specific scalar 'a'
+    let a := (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2)
+    use a
+    have hd : L₁ 0 ^ 2 + L₁ 1 ^ 2 ≠ 0 := hL₁
+
+    constructor
+    · -- Prove a ≠ 0
+      intro ha
+      have h_num : L 1 * L₁ 0 - L 0 * L₁ 1 = 0 := by
+        calc L 1 * L₁ 0 - L 0 * L₁ 1
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) * (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [div_mul_cancel₀ _ hd]
+          _ = a * (L₁ 0 ^ 2 + L₁ 1 ^ 2) := rfl
+          _ = 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [ha]
+          _ = 0 := zero_mul _
+
+      have h_id : (L 0 ^ 2 + L 1 ^ 2) * (L₁ 0 ^ 2 + L₁ 1 ^ 2) = (L 0 * L₁ 0 + L 1 * L₁ 1) ^ 2 + (L 1 * L₁ 0 - L 0 * L₁ 1) ^ 2 := by ring
+
+      have h_dot : L 0 * L₁ 0 + L 1 * L₁ 1 = 0 := by
+        calc L 0 * L₁ 0 + L 1 * L₁ 1
+          _ = L 0 * L₁ 0 + L₁ 1 * L 1 := by ring
+          _ = L 0 * L₁ 0 + - (L₁ 0 * L 0) := by rw [h_perp]
+          _ = 0 := by ring
+
+      rw [h_num, h_dot] at h_id
+      simp only [zero_pow, ne_eq, OfNat.ofNat_ne_zero, not_false_eq_true, add_zero] at h_id
+      cases mul_eq_zero.mp h_id with
+      | inl hl => exact hL hl
+      | inr hr => exact hL₁ hr
+
+    · -- Prove L = scaled a (perp_line L₁ P)
+      have h_sub : L 0 * L₁ 0 = - (L 1 * L₁ 1) := by
+        calc L 0 * L₁ 0
+          _ = L₁ 0 * L 0 := by ring
+          _ = - - (L₁ 0 * L 0) := by ring
+          _ = - (L₁ 1 * L 1) := by rw [← h_perp]
+          _ = - (L 1 * L₁ 1) := by ring
+
+      have h0 : L 0 = - (a * L₁ 1) := by
+        have step : L 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) = (L 1 * L₁ 0 - L 0 * L₁ 1) * (- L₁ 1) := by
+          calc L 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2)
+            _ = (L 0 * L₁ 0) * L₁ 0 + L 0 * L₁ 1 ^ 2 := by ring
+            _ = (- (L 1 * L₁ 1)) * L₁ 0 + L 0 * L₁ 1 ^ 2 := by rw [h_sub]
+            _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * (- L₁ 1) := by ring
+        calc L 0
+          _ = L 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [mul_div_cancel_right₀ _ hd]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * (- L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [step]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) * (- L₁ 1) := by ring
+          _ = a * (- L₁ 1) := rfl
+          _ = - (a * L₁ 1) := by ring
+
+      have h_sub2 : L 1 * L₁ 1 = - (L 0 * L₁ 0) := by
+        calc L 1 * L₁ 1
+          _ = L₁ 1 * L 1 := by ring
+          _ = - (L₁ 0 * L 0) := h_perp
+          _ = - (L 0 * L₁ 0) := by ring
+
+      have h1 : L 1 = a * L₁ 0 := by
+        have step : L 1 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) = (L 1 * L₁ 0 - L 0 * L₁ 1) * L₁ 0 := by
+          calc L 1 * (L₁ 0 ^ 2 + L₁ 1 ^ 2)
+            _ = L 1 * L₁ 0 ^ 2 + (L 1 * L₁ 1) * L₁ 1 := by ring
+            _ = L 1 * L₁ 0 ^ 2 + (- (L 0 * L₁ 0)) * L₁ 1 := by rw [h_sub2]
+            _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * L₁ 0 := by ring
+        calc L 1
+          _ = L 1 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [mul_div_cancel_right₀ _ hd]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * L₁ 0 / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [step]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) * L₁ 0 := by ring
+          _ = a * L₁ 0 := rfl
+
+      have h2 : L 2 = a * (- L₁ 1 * P 0 + L₁ 0 * P 1) := by
+        calc L 2
+          _ = L 0 * P 0 + L 1 * P 1 := h_cont.symm
+          _ = (- (a * L₁ 1)) * P 0 + (a * L₁ 0) * P 1 := by rw [h0, h1]
+          _ = a * (- L₁ 1 * P 0 + L₁ 0 * P 1) := by ring
+
+      funext i
+      fin_cases i
+      · simp [scaled, perp_line]; rw [h0]; ring
+      · simp [scaled, perp_line]; rw [h1]; ring
+      · simp [scaled, perp_line]; rw [h2]; ring
+
+  · -- Reverse direction: Scaled perp_line implies Axiom 4
+    intro h
+    rcases h with ⟨a, ha, hL_eq⟩
+
+    constructor
+    · -- Prove it contains P
+      simp only [is_contained]
+      rw [hL_eq]
+      simp [scaled, perp_line]
+      ring
+    · -- Prove it is perpendicular
+      simp only [perpendicular]
+      rw [hL_eq]
+      simp [scaled, perp_line]
+      ring
+  have : Axiom4 L₁ P L ↔ ∃ a : ℝ, a ≠ 0 ∧ L = scaled a (perp_line L₁ P) := by
+   constructor
+  · -- Forward direction: Axiom 4 implies scaled perp_line
+    intro h
+    rcases h with ⟨h_cont, h_perp⟩
+    simp only [is_contained, perpendicular] at h_cont h_perp
+
+    -- Provide the specific scalar 'a'
+    let a := (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2)
+    use a
+    have hd : L₁ 0 ^ 2 + L₁ 1 ^ 2 ≠ 0 := hL₁
+
+    constructor
+    · -- Prove a ≠ 0
+      intro ha
+      have h_num : L 1 * L₁ 0 - L 0 * L₁ 1 = 0 := by
+        calc L 1 * L₁ 0 - L 0 * L₁ 1
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) * (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [div_mul_cancel₀ _ hd]
+          _ = a * (L₁ 0 ^ 2 + L₁ 1 ^ 2) := rfl
+          _ = 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [ha]
+          _ = 0 := zero_mul _
+
+      have h_id : (L 0 ^ 2 + L 1 ^ 2) * (L₁ 0 ^ 2 + L₁ 1 ^ 2) = (L 0 * L₁ 0 + L 1 * L₁ 1) ^ 2 + (L 1 * L₁ 0 - L 0 * L₁ 1) ^ 2 := by ring
+
+      have h_dot : L 0 * L₁ 0 + L 1 * L₁ 1 = 0 := by
+        calc L 0 * L₁ 0 + L 1 * L₁ 1
+          _ = L 0 * L₁ 0 + L₁ 1 * L 1 := by ring
+          _ = L 0 * L₁ 0 + - (L₁ 0 * L 0) := by rw [h_perp]
+          _ = 0 := by ring
+
+      rw [h_num, h_dot] at h_id
+      simp only [zero_pow, ne_eq, OfNat.ofNat_ne_zero, not_false_eq_true, add_zero] at h_id
+      cases mul_eq_zero.mp h_id with
+      | inl hl => exact hL hl
+      | inr hr => exact hL₁ hr
+
+    · -- Prove L = scaled a (perp_line L₁ P)
+      have h_sub : L 0 * L₁ 0 = - (L 1 * L₁ 1) := by
+        calc L 0 * L₁ 0
+          _ = L₁ 0 * L 0 := by ring
+          _ = - - (L₁ 0 * L 0) := by ring
+          _ = - (L₁ 1 * L 1) := by rw [← h_perp]
+          _ = - (L 1 * L₁ 1) := by ring
+
+      -- Fix: Force h0 to match Lean's internally normalized -(a * L₁ 1) exactly
+      have h0 : L 0 = - (a * L₁ 1) := by
+        have step : L 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) = (L 1 * L₁ 0 - L 0 * L₁ 1) * (- L₁ 1) := by
+          calc L 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2)
+            _ = (L 0 * L₁ 0) * L₁ 0 + L 0 * L₁ 1 ^ 2 := by ring
+            _ = (- (L 1 * L₁ 1)) * L₁ 0 + L 0 * L₁ 1 ^ 2 := by rw [h_sub]
+            _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * (- L₁ 1) := by ring
+        calc L 0
+          _ = L 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [mul_div_cancel_right₀ _ hd]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * (- L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [step]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) * (- L₁ 1) := by ring
+          _ = - (a * L₁ 1) := by ring
+
+      have h_sub2 : L 1 * L₁ 1 = - (L 0 * L₁ 0) := by
+        calc L 1 * L₁ 1
+          _ = L₁ 1 * L 1 := by ring
+          _ = - (L₁ 0 * L 0) := h_perp
+          _ = - (L 0 * L₁ 0) := by ring
+
+      have h1 : L 1 = a * L₁ 0 := by
+        have step : L 1 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) = (L 1 * L₁ 0 - L 0 * L₁ 1) * L₁ 0 := by
+          calc L 1 * (L₁ 0 ^ 2 + L₁ 1 ^ 2)
+            _ = L 1 * L₁ 0 ^ 2 + (L 1 * L₁ 1) * L₁ 1 := by ring
+            _ = L 1 * L₁ 0 ^ 2 + (- (L 0 * L₁ 0)) * L₁ 1 := by rw [h_sub2]
+            _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * L₁ 0 := by ring
+        calc L 1
+          _ = L 1 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [mul_div_cancel_right₀ _ hd]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * L₁ 0 / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [step]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) * L₁ 0 := by ring
+          _ = a * L₁ 0 := rfl
+
+      have h2 : L 2 = a * (- L₁ 1 * P 0 + L₁ 0 * P 1) := by
+        calc L 2
+          _ = L 0 * P 0 + L 1 * P 1 := h_cont.symm
+          _ = (- (a * L₁ 1)) * P 0 + (a * L₁ 0) * P 1 := by rw [h0, h1]
+          _ = a * (- L₁ 1 * P 0 + L₁ 0 * P 1) := by ring
+
+    ext i
+    fin_cases i <;> simp [scaled, perp_line, h0, h1, h2]
+
+  · -- Reverse direction: Scaled perp_line implies Axiom 4
+    intro h
+    rcases h with ⟨a, ha, hL_eq⟩
+
+    constructor
+    · -- Prove it contains P
+      simp only [is_contained]
+      rw [hL_eq]
+      simp [scaled, perp_line]
+      ring
+    · -- Prove it is perpendicular
+      simp only [perpendicular]
+      rw [hL_eq]
+      simp [scaled, perp_line]
+      ring
 /-- Geometrically, a line L is tangent to a parabola with a given focus and directrix
     if the reflection of the focus across L is contained on the directrix. -/
 def is_tangent_to_parabola (L : Line) (focus : Point) (directrix : Line) : Prop :=
