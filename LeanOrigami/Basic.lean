@@ -96,6 +96,19 @@ def perpendicular : Prop :=
   let a₂ := L₂ 0; let b₂ := L₂ 1;
   b₁ * b₂ = - (a₁ * a₂)
 
+def is_horizontal (L : Line) : Prop :=
+  L 0 = 0
+
+def is_vertical (L : Line) : Prop :=
+  L 1 = 0
+
+def is_parallel (L₁ L₂ : Line) : Prop :=
+  let a := L₁ 0; let b := L₁ 1;
+  let d := L₂ 0; let e := L₂ 1;
+  b * d = a * e
+
+def is_tranverse (L₁ L₂ : Line) : Prop := ¬ is_parallel L₁ L₂
+
 -- A line L folds point P₁ onto P₂ if P₂ is the reflection of P₁ across L. -/
 def folds_onto (L : Line) (P₁ P₂ : Point) : Prop :=
   reflect L P₁ = P₂
