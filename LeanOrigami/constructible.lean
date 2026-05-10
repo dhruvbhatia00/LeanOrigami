@@ -55,6 +55,20 @@ lemma cons_point_origin : cons_point ![0, 0] :=
 
 lemma cons_point_one : cons_point ![1, 0] :=
   cons_point.hOne _ rfl
+
+lemma constructible_real_of_point_x {P : Point} (hP : cons_point P) :
+    constructible_real_proj (P 0) :=
+  ⟨P, hP, Or.inl rfl⟩
+
+lemma constructible_real_of_point_y {P : Point} (hP : cons_point P) :
+    constructible_real_proj (P 1) :=
+  ⟨P, hP, Or.inr rfl⟩
+
+lemma constructible_real_zero : constructible_real_proj 0 :=
+  constructible_real_of_point_x cons_point_origin
+
+lemma constructible_real_one : constructible_real_proj 1 :=
+  constructible_real_of_point_x cons_point_one
 -- 1. FOUNDATIONAL LINES
 -- We need the axes to project onto and intersect with.
 
@@ -87,6 +101,31 @@ lemma cons_y_axis : cons_line y_axis := by
   · -- Goal 2: Prove it satisfies Axiom 4
     exact axiom4_y_axis
 
+-- HELPER 1: Constructing the vertical line x = a
+lemma cons_line_x_eq (a : ℝ) (ha : constructible_real_proj a) : cons_line ![1, 0, a] := by
+  rcases ha with ⟨P, hP, h_coord⟩
+  rcases h_coord with hx | hy
+  · -- Case 1: P 0 = a. We drop a perpendicular from P to the X-axis.
+    have h_axiom4 : Axiom4 x_axis P ![1, 0, a] := by
+      simp [Axiom4, is_contained, perpendicular, x_axis, ← hx]
+    apply cons_line.axiom4 cons_x_axis hP
+    · simp [valid, x_axis]
+    · exact h_axiom4
+  · -- Case 2: P 1 = a. Requires constructing y=x and reflecting P.
+    sorry
+
+-- HELPER 2: Constructing the horizontal line y = b
+lemma cons_line_y_eq (b : ℝ) (hb : constructible_real_proj b) : cons_line ![0, 1, b] := by
+  rcases hb with ⟨P, hP, h_coord⟩
+  rcases h_coord with hx | hy
+  · -- Case 1: P 0 = b. Requires constructing y=x and reflecting P.
+    sorry
+  · -- Case 2: P 1 = b. We drop a perpendicular from P to the Y-axis.
+    have h_axiom4 : Axiom4 y_axis P ![0, 1, b] := by
+      simp [Axiom4, is_contained, perpendicular, y_axis, ← hy]
+    apply cons_line.axiom4 cons_y_axis hP
+    · simp [valid, y_axis]
+    · exact h_axiom4
 
 -- "A point (a, b) is origami-constructible if and only if its
 -- coordinates a and b are origami-constructible elements of R."
@@ -94,7 +133,7 @@ lemma cons_y_axis : cons_line y_axis := by
 lemma cons_point_iff_coords_cons (a b : ℝ) :
   cons_point ![a, b] ↔ constructible_real_proj a ∧ constructible_real_proj b := by
   constructor
- · -- Forward direction (Point → Coordinates)
+  · -- Forward direction (Point → Coordinates)
     intro h
     constructor
     · -- Show `a` is constructible.
@@ -105,17 +144,20 @@ lemma cons_point_iff_coords_cons (a b : ℝ) :
       exact constructible_real_of_point_y h
 
   · -- Backward direction (Coordinates → Point)
-    -- Proof text: "...the point (a, b) can be origami-constructed as the
-    -- intersection of such perpendicular lines."
     intro ⟨ha, hb⟩
-    -- ha gives us a point with an 'a' coordinate, hb gives a point with a 'b' coordinate.
-    -- 1. Project `ha` to get (a, 0) and `hb` to get (0, b).
-    -- 2. Drop a perpendicular to X-axis at (a, 0).
-    -- 3. Drop a perpendicular to Y-axis at (0, b).
-    -- 4. Intersect these two lines to get (a, b).
-    sorry
+    -- 1. Construct the perpendicular line x = a
+    have hLx := cons_line_x_eq a ha
+    -- 2. Construct the perpendicular line y = b
+    have hLy := cons_line_y_eq b hb
 
--- 3. HELPER FOR DISTANCE SYMMETRY
+    -- 3. Prove that these two lines intersect exactly at ![a, b]
+    have h_int : intersects_at ![1, 0, a] ![0, 1, b] ![a, b] := by
+      simp [intersects_at, is_contained]
+
+    -- 4. Apply the intersection construction axiom
+    exact cons_point.hIntersect hLx hLy ![a, b] h_int
+
+-- HELPER FOR DISTANCE SYMMETRY
 -- Folding distances might give us `-x` instead of `x`. We need to know that if
 -- a coordinate is constructible, its negative is too (by reflecting across an axis).
 
@@ -123,45 +165,63 @@ lemma constructible_real_proj_neg (x : ℝ) :
   constructible_real_proj x ↔ constructible_real_proj (-x) := by
   sorry
 
--- 4. EQUIVALENCE OF DEFINITIONS
+-- HELPER: Folding a point onto the X-axis through the origin
+-- This encapsulates Axiom 5, Axiom 4, the Intersection, and the distance proof.
+lemma cons_point_fold_x_axis (P : Point) (hP : cons_point P) :
+  ∃ P' : Point, cons_point P' ∧ P' 1 = 0 ∧ (P' 0)^2 + (P' 1)^2 = (P 0)^2 + (P 1)^2 := by
+  sorry
+
+-- EQUIVALENCE OF DEFINITIONS
 -- We can now use the coordinate projection logic to prove your equivalence theorem.
 
 lemma constructible_real_defs_equiv (x : ℝ) :
   constructible_real_proj x ↔ constructible_real_dist x := by
   constructor
   · -- Proj → Dist
-    -- If x is a coordinate of some constructible point, we can project it to
-    -- an axis to get exactly (x, 0) or (0, x).
-    -- The distance squared to the origin for either point is x^2 + 0^2 = x^2.
     intro h
-    rcases h with ⟨P, hP, h_coord⟩
-    sorry
+    -- Because `x` is a constructible coordinate (h) and `0` is a constructible
+    -- coordinate, the point (x, 0) is constructible by our previous lemma.
+    have h_pt : cons_point ![x, 0] := by
+      apply (cons_point_iff_coords_cons x 0).mpr
+      exact ⟨h, constructible_real_zero⟩
+
+    -- We use ![x, 0] as our witness for the distance definition.
+    use ![x, 0]
+    constructor
+    · exact h_pt
+    · -- Prove that (![x, 0] 0)^2 + (![x, 0] 1)^2 = x^2
+      simp
 
   · -- Dist → Proj
-    -- If x^2 = P_0^2 + P_1^2 for some constructible point P, we want to show x is a coordinate.
-    -- We can use Axiom 5 to fold point P onto the X-axis such that the fold line
-    -- passes through the Origin (0,0).
-    -- Because the fold line passes through the origin, reflection preserves distance to the origin.
-    -- Thus, the reflected point P' lies on the X-axis with the same distance, so P' = (±x, 0).
-    -- This makes ±x a constructible coordinate, and by `constructible_real_proj_neg`, x is constructible.
     intro h
     rcases h with ⟨P, hP, h_dist⟩
-    sorry
 
+    -- 1. Use our geometric helper to fold P onto the X-axis
+    have h_fold := cons_point_fold_x_axis P hP
+    rcases h_fold with ⟨P', hP'_cons, hP'_y, hP'_dist⟩
 
+    -- 2. Since P' is on the X-axis, its Y-coordinate squared is 0
+    have h_y_sq : (P' 1)^2 = 0 := by
+      rw [hP'_y]
+      ring
 
+    -- 3. Substitute this 0 into the distance preservation equation
+    rw [h_y_sq, add_zero] at hP'_dist
+    rw [h_dist] at hP'_dist
 
+    -- 4. We now have (P' 0)^2 = x^2. Mathematically, this means P'_0 = x OR P'_0 = -x.
+    -- Lean's `sq_eq_sq_iff_eq_or_eq_neg` handles this exact algebraic step!
+    have h_eq_or : P' 0 = x ∨ P' 0 = -x := by
+      exact sq_eq_sq_iff_eq_or_eq_neg.mp hP'_dist
 
-lemma constructible_real_of_point_x {P : Point} (hP : cons_point P) :
-    constructible_real_proj (P 0) :=
-  ⟨P, hP, Or.inl rfl⟩
+    -- 5. Branch on whether P' landed on the positive or negative side of the origin
+    rcases h_eq_or with hx | hnegx
+    · -- Case 1: P' 0 = x
+      -- Since P' is constructible, and its x-coordinate is x, x is constructible!
+      exact ⟨P', hP'_cons, Or.inl hx⟩
 
-lemma constructible_real_of_point_y {P : Point} (hP : cons_point P) :
-    constructible_real_proj (P 1) :=
-  ⟨P, hP, Or.inr rfl⟩
-
-lemma constructible_real_zero : constructible_real_proj 0 :=
-  constructible_real_of_point_x cons_point_origin
-
-lemma constructible_real_one : constructible_real_proj 1 :=
-  constructible_real_of_point_x cons_point_one
+    · -- Case 2: P' 0 = -x
+      -- Since P' is constructible, -x is a constructible coordinate.
+      have h_neg_cons : constructible_real_proj (-x) := ⟨P', hP'_cons, Or.inl hnegx⟩
+      -- By our symmetry helper, if -x is constructible, x must also be constructible!
+      exact (constructible_real_proj_neg x).mpr h_neg_cons
