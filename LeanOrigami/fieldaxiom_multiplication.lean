@@ -2,6 +2,8 @@ import LeanOrigami.Basic
 import LeanOrigami.constructible
 import LeanOrigami.Axioms
 
+set_option linter.style.emptyLine false
+
 /-- The product of two constructible numbers is constructible. -/
 lemma constructible_real_proj_mul (a b : ℝ)
   (ha : constructible_real_proj a) (hb : constructible_real_proj b) :
