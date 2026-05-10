@@ -100,8 +100,36 @@ lemma cons_y_axis : cons_line y_axis := by
     simp [valid, y_axis]
   · -- Goal 2: Prove it satisfies Axiom 4
     exact axiom4_y_axis
+-- HELPER: Constructing the line y = x (The Diagonal)
+def y_eq_x : Line := ![-1, 1, 0] -- The line -x + y = 0
 
--- HELPER 1: Constructing the vertical line x = a
+/-- Folding (1,0) onto the Y-axis through the origin creates the line y = x. -/
+lemma axiom5_y_eq_x : Axiom5 ![1, 0] ![0, 0] y_axis y_eq_x := by
+  -- Axiom 5: is_contained L P₂ ∧ is_contained L₁ (reflect L P₁)
+  -- By folding (1,0) onto the y-axis, the crease through the origin is y=x.
+  simp [Axiom5, is_contained, reflect, y_axis, y_eq_x]
+  norm_num
+
+/-- The diagonal y = x is constructible via Axiom 5. -/
+lemma cons_y_eq_x : cons_line y_eq_x := by
+  apply cons_line.axiom5 cons_point_one cons_point_origin cons_y_axis
+  · -- Goal 1: Prove y_eq_x is a valid line ((-1)^2 + 1^2 ≠ 0)
+    simp [valid, y_eq_x]
+  · -- Goal 2: Prove it satisfies Axiom 5
+    exact axiom5_y_eq_x
+
+-- HELPER: Constructing the line y = -x
+def y_eq_neg_x : Line := ![1, 1, 0]
+
+/-- The line y = -x is constructible by dropping a perpendicular to y = x through the origin. -/
+lemma cons_y_eq_neg_x : cons_line y_eq_neg_x := by
+  have h_ax4 : Axiom4 y_eq_x ![0, 0] y_eq_neg_x := by
+    simp [Axiom4, is_contained, perpendicular, y_eq_x, y_eq_neg_x]
+  apply cons_line.axiom4 cons_y_eq_x cons_point_origin
+  · simp [valid, y_eq_neg_x]
+  · exact h_ax4
+
+-- HELPER : Constructing the vertical line x = a
 lemma cons_line_x_eq (a : ℝ) (ha : constructible_real_proj a) : cons_line ![1, 0, a] := by
   rcases ha with ⟨P, hP, h_coord⟩
   rcases h_coord with hx | hy
@@ -109,22 +137,59 @@ lemma cons_line_x_eq (a : ℝ) (ha : constructible_real_proj a) : cons_line ![1,
     have h_axiom4 : Axiom4 x_axis P ![1, 0, a] := by
       simp [Axiom4, is_contained, perpendicular, x_axis, ← hx]
     apply cons_line.axiom4 cons_x_axis hP
-    · simp [valid, x_axis]
+    · simp [valid]
     · exact h_axiom4
-  · -- Case 2: P 1 = a. Requires constructing y=x and reflecting P.
-    sorry
+  · -- Case 2: P 1 = a. We intersect y=a with y=x to get (a,a), then drop a perpendicular to the X-axis.
+    -- Step 1: Construct the line y=a using Axiom 4 from point P to the Y-axis.
+    have h_axiom4_ya : Axiom4 y_axis P ![0, 1, a] := by
+      simp [Axiom4, is_contained, perpendicular, y_axis, ← hy]
+    have h_ya : cons_line ![0, 1, a] := by
+      apply cons_line.axiom4 cons_y_axis hP
+      · simp [valid]
+      · exact h_axiom4_ya
 
--- HELPER 2: Constructing the horizontal line y = b
+    -- Step 2: Intersect y=a with y=x to construct the point (a, a).
+    have h_int : intersects_at ![0, 1, a] y_eq_x ![a, a] := by
+      simp [intersects_at, is_contained, y_eq_x]
+    have h_paa : cons_point ![a, a] := cons_point.hIntersect h_ya cons_y_eq_x ![a, a] h_int
+
+    -- Step 3: Construct the line x=a by dropping a perpendicular from (a, a) to the X-axis.
+    have h_axiom4_xa : Axiom4 x_axis ![a, a] ![1, 0, a] := by
+      simp [Axiom4, is_contained, perpendicular, x_axis]
+    apply cons_line.axiom4 cons_x_axis h_paa
+    · simp [valid]
+    · exact h_axiom4_xa
+
+-- HELPER : Constructing the horizontal line y = b
 lemma cons_line_y_eq (b : ℝ) (hb : constructible_real_proj b) : cons_line ![0, 1, b] := by
   rcases hb with ⟨P, hP, h_coord⟩
   rcases h_coord with hx | hy
-  · -- Case 1: P 0 = b. Requires constructing y=x and reflecting P.
-    sorry
+  · -- Case 1: P 0 = b. We intersect x=b with y=x to get (b,b), then drop a perpendicular to the Y-axis.
+    -- Step 1: Construct the line x=b using Axiom 4 from point P to the X-axis.
+    have h_axiom4_xb : Axiom4 x_axis P ![1, 0, b] := by
+      simp [Axiom4, is_contained, perpendicular, x_axis, ← hx]
+    have h_xb : cons_line ![1, 0, b] := by
+      apply cons_line.axiom4 cons_x_axis hP
+      · simp [valid]
+      · exact h_axiom4_xb
+
+    -- Step 2: Intersect x=b with y=x to construct the point (b, b).
+    have h_int : intersects_at ![1, 0, b] y_eq_x ![b, b] := by
+      simp [intersects_at, is_contained, y_eq_x]
+    have h_pbb : cons_point ![b, b] := cons_point.hIntersect h_xb cons_y_eq_x ![b, b] h_int
+
+    -- Step 3: Construct the line y=b by dropping a perpendicular from (b, b) to the Y-axis.
+    have h_axiom4_yb : Axiom4 y_axis ![b, b] ![0, 1, b] := by
+      simp [Axiom4, is_contained, perpendicular, y_axis]
+    apply cons_line.axiom4 cons_y_axis h_pbb
+    · simp [valid]
+    · exact h_axiom4_yb
+
   · -- Case 2: P 1 = b. We drop a perpendicular from P to the Y-axis.
     have h_axiom4 : Axiom4 y_axis P ![0, 1, b] := by
       simp [Axiom4, is_contained, perpendicular, y_axis, ← hy]
     apply cons_line.axiom4 cons_y_axis hP
-    · simp [valid, y_axis]
+    · simp [valid]
     · exact h_axiom4
 
 -- "A point (a, b) is origami-constructible if and only if its
@@ -157,13 +222,37 @@ lemma cons_point_iff_coords_cons (a b : ℝ) :
     -- 4. Apply the intersection construction axiom
     exact cons_point.hIntersect hLx hLy ![a, b] h_int
 
--- HELPER FOR DISTANCE SYMMETRY
--- Folding distances might give us `-x` instead of `x`. We need to know that if
--- a coordinate is constructible, its negative is too (by reflecting across an axis).
+-- Symmetry lemma
+-- HELPER: Forward direction of symmetry
+lemma constructible_real_proj_neg_forward (x : ℝ) :
+  constructible_real_proj x → constructible_real_proj (-x) := by
+  intro hx
+  -- 1. Construct the vertical line x = x using our earlier helper
+  have hLx := cons_line_x_eq x hx
 
+  -- 2. Intersect x = x with y = -x to get the point (x, -x)
+  have h_int : intersects_at ![1, 0, x] y_eq_neg_x ![x, -x] := by
+    simp [intersects_at, is_contained, y_eq_neg_x]
+
+  have hP : cons_point ![x, -x] :=
+    cons_point.hIntersect hLx cons_y_eq_neg_x ![x, -x] h_int
+
+  -- 3. Extract the y-coordinate (-x) using your foundational lemma
+  exact constructible_real_of_point_y hP
+
+-- MAIN SYMMETRY LEMMA
 lemma constructible_real_proj_neg (x : ℝ) :
   constructible_real_proj x ↔ constructible_real_proj (-x) := by
-  sorry
+  constructor
+  · -- Forward: x → -x
+    exact constructible_real_proj_neg_forward x
+  · -- Backward: -x → x
+    intro h
+    -- Apply the forward proof to (-x) to get (-(-x))
+    have h2 := constructible_real_proj_neg_forward (-x) h
+    -- Lean knows that -(-x) is definitionally equal to x
+    rw [neg_neg] at h2
+    exact h2
 
 -- HELPER: Folding a point onto the X-axis through the origin
 -- This encapsulates Axiom 5, Axiom 4, the Intersection, and the distance proof.
@@ -184,42 +273,34 @@ lemma constructible_real_defs_equiv (x : ℝ) :
     have h_pt : cons_point ![x, 0] := by
       apply (cons_point_iff_coords_cons x 0).mpr
       exact ⟨h, constructible_real_zero⟩
-
     -- We use ![x, 0] as our witness for the distance definition.
     use ![x, 0]
     constructor
     · exact h_pt
     · -- Prove that (![x, 0] 0)^2 + (![x, 0] 1)^2 = x^2
       simp
-
   · -- Dist → Proj
     intro h
     rcases h with ⟨P, hP, h_dist⟩
-
     -- 1. Use our geometric helper to fold P onto the X-axis
     have h_fold := cons_point_fold_x_axis P hP
     rcases h_fold with ⟨P', hP'_cons, hP'_y, hP'_dist⟩
-
     -- 2. Since P' is on the X-axis, its Y-coordinate squared is 0
     have h_y_sq : (P' 1)^2 = 0 := by
       rw [hP'_y]
       ring
-
     -- 3. Substitute this 0 into the distance preservation equation
     rw [h_y_sq, add_zero] at hP'_dist
     rw [h_dist] at hP'_dist
-
     -- 4. We now have (P' 0)^2 = x^2. Mathematically, this means P'_0 = x OR P'_0 = -x.
     -- Lean's `sq_eq_sq_iff_eq_or_eq_neg` handles this exact algebraic step!
     have h_eq_or : P' 0 = x ∨ P' 0 = -x := by
       exact sq_eq_sq_iff_eq_or_eq_neg.mp hP'_dist
-
     -- 5. Branch on whether P' landed on the positive or negative side of the origin
     rcases h_eq_or with hx | hnegx
     · -- Case 1: P' 0 = x
       -- Since P' is constructible, and its x-coordinate is x, x is constructible!
       exact ⟨P', hP'_cons, Or.inl hx⟩
-
     · -- Case 2: P' 0 = -x
       -- Since P' is constructible, -x is a constructible coordinate.
       have h_neg_cons : constructible_real_proj (-x) := ⟨P', hP'_cons, Or.inl hnegx⟩
