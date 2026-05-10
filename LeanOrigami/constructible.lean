@@ -1,5 +1,14 @@
 import LeanOrigami.Axioms
 
+/-!
+# Origami constructibility
+
+The mutual inductive predicates `cons_point` and `cons_line` describe points
+and lines obtainable from the Huzita-Hatori axioms, starting from `0` and `1`
+on the real axis.  A real number is constructible when it appears as one
+coordinate of a constructible point.
+-/
+
 mutual
 
 inductive cons_point : Point → Prop where
@@ -31,3 +40,28 @@ inductive cons_line : Line → Prop where
       Axiom7 L₁ P L → cons_line L
 
 end
+
+/-! ## Constructible real numbers -/
+
+def constructible_real (x : ℝ) : Prop :=
+  ∃ P : Point, cons_point P ∧ (P 0 = x ∨ P 1 = x)
+
+lemma cons_point_origin : cons_point ![0, 0] :=
+  cons_point.hOrigin _ rfl
+
+lemma cons_point_one : cons_point ![1, 0] :=
+  cons_point.hOne _ rfl
+
+lemma constructible_real_of_point_x {P : Point} (hP : cons_point P) :
+    constructible_real (P 0) :=
+  ⟨P, hP, Or.inl rfl⟩
+
+lemma constructible_real_of_point_y {P : Point} (hP : cons_point P) :
+    constructible_real (P 1) :=
+  ⟨P, hP, Or.inr rfl⟩
+
+lemma constructible_real_zero : constructible_real 0 :=
+  constructible_real_of_point_x cons_point_origin
+
+lemma constructible_real_one : constructible_real 1 :=
+  constructible_real_of_point_x cons_point_one
