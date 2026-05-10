@@ -43,8 +43,15 @@ end
 
 /-! ## Constructible real numbers -/
 
-def constructible_real (x : ℝ) : Prop :=
+def constructible_real_proj (x : ℝ) : Prop :=
   ∃ P : Point, cons_point P ∧ (P 0 = x ∨ P 1 = x)
+
+def constructible_real_dist (x : ℝ) : Prop :=
+  ∃ P : Point, cons_point P ∧ ((P 0) ^ 2 + (P 1) ^ 2 = x ^ 2)
+
+lemma constructible_real_defs_equiv (x : ℝ) : constructible_real_proj x ↔
+constructible_real_dist x  := by
+  sorry
 
 lemma cons_point_origin : cons_point ![0, 0] :=
   cons_point.hOrigin _ rfl
