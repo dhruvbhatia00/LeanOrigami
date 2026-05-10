@@ -51,12 +51,12 @@ lemma dist_of_cons_points_is_cons (P Q : Point) (x : ℝ) (h0 : cons_point P ∧
     ring
   let k := ![ -(P 1), (P 0), (-(P 1)*(Q 0) + (P 0) * (Q 1))]
   let R := intersectionPoint n k
-  have h5 : ((P 1 - Q 1) * P 0 + P 1 * (Q 0 - P 0)) = -((P 0) * (Q 1) - (P 1) * (Q 0)) :=
-    sorry
   have h6 : (P 0 - Q 0) ^ 2 + (P 1 - Q 1) ^ 2 =
     (-((Q 0 - P 0) * (-(P 1 * Q 0) + P 0 * Q 1)) / ((P 1 - Q 1) * P 0 + P 1 * (Q 0 - P 0))) ^ 2 +
     ((P 1 - Q 1) * (-(P 1 * Q 0) + P 0 * Q 1) / ((P 1 - Q 1) * P 0 + P 1 * (Q 0 - P 0))) ^ 2 := by
     sorry
+
+
   have h_length : x^2 = (R 0)^2 + (R 1)^2 := by
     rw[← h1]
     simp [R, intersectionPoint, k, n, h6]
