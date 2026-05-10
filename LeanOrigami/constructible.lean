@@ -254,11 +254,108 @@ lemma constructible_real_proj_neg (x : ℝ) :
     rw [neg_neg] at h2
     exact h2
 
--- HELPER: Folding a point onto the X-axis through the origin
--- This encapsulates Axiom 5, Axiom 4, the Intersection, and the distance proof.
+open Real
+
+-- HELPER 3: Folding a point onto the X-axis through the origin
+set_option linter.flexible false in
 lemma cons_point_fold_x_axis (P : Point) (hP : cons_point P) :
   ∃ P' : Point, cons_point P' ∧ P' 1 = 0 ∧ (P' 0)^2 + (P' 1)^2 = (P 0)^2 + (P 1)^2 := by
-  sorry
+
+  -- STEP 1: Case Split
+  -- What if P is already sitting on the X-axis?
+  by_cases h_y : P 1 = 0
+  · -- If P is already on the X-axis, we don't need to fold! P' is just P.
+    use P
+
+  · -- STEP 2: The Non-Trivial Fold
+    -- If P is not on the X-axis, we must fold it.
+    -- Let r be the distance to the origin.
+    let r := Real.sqrt ((P 0)^2 + (P 1)^2)
+
+    -- The fold line L bisects the angle between P and the target point (r, 0).
+    -- Its normal vector is P - (r, 0) = (P 0 - r, P 1). It passes through origin, so L 2 = 0.
+    let L : Line := ![P 0 - r, P 1, 0]
+
+    -- Prove L is a valid line (since P 1 ≠ 0, the normal vector cannot be 0)
+    have hL_valid : valid L := by
+      simp [valid, L]
+      intro h
+      -- Since P 1 ≠ 0 (from h_y), its square is strictly positive.
+      have h_pos : (P 1)^2 > 0 := sq_pos_of_ne_zero h_y
+      -- The square of the x-component is at least non-negative.
+      have h_sq : (P 0 - r)^2 ≥ 0 := sq_nonneg (P 0 - r)
+      -- A positive + a non-negative cannot equal 0. nlinarith sees the contradiction!
+      nlinarith [h_pos, h_sq, h]
+
+    -- Prove L satisfies Axiom 5 for folding P onto the X-axis, passing through Origin
+    have h_ax5 : Axiom5 P ![0, 0] x_axis L := by
+      simp [Axiom5, is_contained, reflect, x_axis, L]
+
+      -- Step 1: Extract the geometric distance fact r^2 = P_0^2 + P_1^2
+      have hr : r^2 - ((P 0)^2 + (P 1)^2) = 0 := by
+        have h_pos : 0 ≤ (P 0)^2 + (P 1)^2 := add_nonneg (sq_nonneg (P 0)) (sq_nonneg (P 1))
+        have h_sq : r^2 = (P 0)^2 + (P 1)^2 := Real.sq_sqrt h_pos
+        exact sub_eq_zero.mpr h_sq
+
+      -- Step 2: Clear the fraction by putting everything over the non-zero denominator
+      have hL_val : (P 0 - r)^2 + (P 1)^2 ≠ 0 := hL_valid
+      field_simp [hL_val]
+
+      -- Step 3: field_simp already turned this into Numerator = Denominator * 0.
+      -- linear_combination can solve this directly!
+      linear_combination P 1 * hr
+
+    have hL_cons : cons_line L :=
+      cons_line.axiom5 hP cons_point_origin cons_x_axis hL_valid h_ax5
+
+    -- STEP 3: Construct the Perpendicular
+    -- We construct L_perp, the line through P perpendicular to our crease line L.
+    -- The intersection of L_perp and the X-axis will be our final point!
+    let L_perp : Line := ![-L 1, L 0, -(L 1) * P 0 + L 0 * P 1]
+
+    have h_ax4 : Axiom4 L P L_perp := by
+      simp [Axiom4, is_contained, perpendicular, L, L_perp]
+      ring
+
+    have hL_perp_valid : valid L_perp := by
+      simp [valid, L_perp]
+      -- simp automatically simplifies (-L 1)^2 into L 1^2
+      intro h
+
+      apply hL_valid
+
+      -- Now we just swap the order of addition to match h perfectly!
+      calc L 0 ^ 2 + L 1 ^ 2
+        _ = L 1 ^ 2 + L 0 ^ 2 := by ring
+        _ = 0 := h
+
+    have hL_perp_cons : cons_line L_perp :=
+      cons_line.axiom4 hL_cons hP hL_perp_valid h_ax4
+
+    -- STEP 4: Intersect to find P'
+    -- Intersect L_perp with the X-axis to geometrically construct P' = (r, 0)
+    let P' : Point := ![r, 0]
+
+    have h_int : intersects_at L_perp x_axis P' := by
+      -- Expand all definitions down to their coordinates
+      simp [intersects_at, is_contained, x_axis, L_perp, P', L]
+      -- It turns out this is a pure algebraic identity! We don't even need r^2 here.
+      -- (If your definition of intersects_at requires proving the lines aren't parallel,
+      -- the fact that P 1 ≠ 0 from our by_cases `h_y` handles it).
+      try ring
+
+    have hP'_cons : cons_point P' :=
+      cons_point.hIntersect hL_perp_cons cons_x_axis P' h_int
+
+    -- STEP 5: Final Verification
+    use P'
+    refine ⟨hP'_cons, rfl, ?_⟩
+    -- Simplify the goal to evaluate P' 0 and P' 1
+    simp [P']
+    -- The goal is now r^2 = (P 0)^2 + (P 1)^2.
+    -- We just apply the exact same Real.sq_sqrt logic we used in Axiom 5!
+    have h_pos : 0 ≤ (P 0)^2 + (P 1)^2 := add_nonneg (sq_nonneg (P 0)) (sq_nonneg (P 1))
+    exact Real.sq_sqrt h_pos
 
 -- EQUIVALENCE OF DEFINITIONS
 -- We can now use the coordinate projection logic to prove your equivalence theorem.
