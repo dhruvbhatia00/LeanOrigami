@@ -96,6 +96,12 @@ def perpendicular : Prop :=
   let a₂ := L₂ 0; let b₂ := L₂ 1;
   b₁ * b₂ = - (a₁ * a₂)
 
+def is_horizontal (L : Line) : Prop :=
+  L 0 = 0
+
+def is_vertical (L : Line) : Prop :=
+  L 1 = 0
+
 def is_parallel (L₁ L₂ : Line) : Prop :=
   let a := L₁ 0; let b := L₁ 1;
   let d := L₂ 0; let e := L₂ 1;
