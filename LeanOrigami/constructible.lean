@@ -69,11 +69,23 @@ lemma axiom1_x_axis : Axiom1 ![0, 0] ![1, 0] x_axis := by
 /-- The X-axis is constructible via Axiom 1. -/
 lemma cons_x_axis : cons_line x_axis := by
   apply cons_line.axiom1 cons_point_origin cons_point_one
-  exact axiom1_x_axis
+  · -- Goal 1: Prove the x_axis is a valid line (0^2 + 1^2 ≠ 0)
+    simp [valid, x_axis]
+  · -- Goal 2: Prove it satisfies Axiom 1
+    exact axiom1_x_axis
 
-/-- The Y-axis is constructible (perpendicular to X-axis through origin). -/
+/-- The Y-axis passes through (0,0) and is perpendicular to the X-axis. -/
+lemma axiom4_y_axis : Axiom4 x_axis ![0, 0] y_axis := by
+  -- Unfold the definitions to evaluate containment and the perpendicular dot product
+  simp [Axiom4, is_contained, perpendicular, x_axis, y_axis]
+
+/-- The Y-axis is constructible via Axiom 4. -/
 lemma cons_y_axis : cons_line y_axis := by
-  sorry
+  apply cons_line.axiom4 cons_x_axis cons_point_origin
+  · -- Goal 1: Prove the y_axis is a valid line (1^2 + 0^2 ≠ 0)
+    simp [valid, y_axis]
+  · -- Goal 2: Prove it satisfies Axiom 4
+    exact axiom4_y_axis
 
 
 -- "A point (a, b) is origami-constructible if and only if its
@@ -82,19 +94,15 @@ lemma cons_y_axis : cons_line y_axis := by
 lemma cons_point_iff_coords_cons (a b : ℝ) :
   cons_point ![a, b] ↔ constructible_real_proj a ∧ constructible_real_proj b := by
   constructor
-  · -- Forward direction (Point → Coordinates)
-    -- Proof text: "...we can project the constructed point to the x-axis
-    -- and y-axis (apply O4)..."
+ · -- Forward direction (Point → Coordinates)
     intro h
     constructor
-    · -- Project onto X-axis to show `a` is constructible
-      -- 1. Apply Axiom 4 to get a line through (a,b) perpendicular to X-axis.
-      -- 2. Intersect this line with the X-axis to get (a, 0).
-      sorry
-    · -- Project onto Y-axis to show `b` is constructible
-      -- 1. Apply Axiom 4 to get a line through (a,b) perpendicular to Y-axis.
-      -- 2. Intersect this line with the Y-axis to get (0, b).
-      sorry
+    · -- Show `a` is constructible.
+      -- We already have `![a, b]`, and Lean knows `![a, b] 0 = a`.
+      exact constructible_real_of_point_x h
+    · -- Show `b` is constructible.
+      -- We already have `![a, b]`, and Lean knows `![a, b] 1 = b`.
+      exact constructible_real_of_point_y h
 
   · -- Backward direction (Coordinates → Point)
     -- Proof text: "...the point (a, b) can be origami-constructed as the
