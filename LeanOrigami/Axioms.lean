@@ -342,6 +342,125 @@ theorem axiom3_slopeQuadratic {L₁ L₂ F : Line} {m : ℝ}
 
 end Axiom3Spec
 
+/-! ## Axiom 4 -/
+
+namespace Axiom4Spec
+
+def perpendicularLine (L₁ : Line) (P : Point) : Line :=
+  ![-L₁ 1, L₁ 0, -L₁ 1 * P 0 + L₁ 0 * P 1]
+
+theorem axiom4_scaled_iff {L L₁ : Line} {P : Point} (hL : valid L) (hL₁ : valid L₁) :
+    Axiom4 L₁ P L ↔ ∃ a : ℝ, a ≠ 0 ∧ L = scaled a (perpendicularLine L₁ P) := by
+  constructor
+  · intro h
+    rcases h with ⟨h_cont, h_perp⟩
+    simp only [is_contained, perpendicular] at h_cont h_perp
+    let a := (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2)
+    use a
+    have hd : L₁ 0 ^ 2 + L₁ 1 ^ 2 ≠ 0 := hL₁
+    constructor
+    · intro ha
+      have h_num : L 1 * L₁ 0 - L 0 * L₁ 1 = 0 := by
+        calc
+          L 1 * L₁ 0 - L 0 * L₁ 1
+              = (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) *
+                  (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [div_mul_cancel₀ _ hd]
+          _ = a * (L₁ 0 ^ 2 + L₁ 1 ^ 2) := rfl
+          _ = 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [ha]
+          _ = 0 := zero_mul _
+      have h_id :
+          (L 0 ^ 2 + L 1 ^ 2) * (L₁ 0 ^ 2 + L₁ 1 ^ 2) =
+            (L 0 * L₁ 0 + L 1 * L₁ 1) ^ 2 +
+              (L 1 * L₁ 0 - L 0 * L₁ 1) ^ 2 := by
+        ring
+      have h_dot : L 0 * L₁ 0 + L 1 * L₁ 1 = 0 := by
+        calc
+          L 0 * L₁ 0 + L 1 * L₁ 1
+              = L 0 * L₁ 0 + L₁ 1 * L 1 := by ring
+          _ = L 0 * L₁ 0 + -(L₁ 0 * L 0) := by rw [h_perp]
+          _ = 0 := by ring
+      rw [h_num, h_dot] at h_id
+      simp only [zero_pow, ne_eq, OfNat.ofNat_ne_zero, not_false_eq_true, add_zero] at h_id
+      cases mul_eq_zero.mp h_id with
+      | inl hl => exact hL hl
+      | inr hr => exact hL₁ hr
+    · have h_sub : L 0 * L₁ 0 = -(L 1 * L₁ 1) := by
+        calc
+          L 0 * L₁ 0
+              = L₁ 0 * L 0 := by ring
+          _ = - -(L₁ 0 * L 0) := by ring
+          _ = -(L₁ 1 * L 1) := by rw [← h_perp]
+          _ = -(L 1 * L₁ 1) := by ring
+      have h0 : L 0 = a * (-L₁ 1) := by
+        have step :
+            L 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) =
+              (L 1 * L₁ 0 - L 0 * L₁ 1) * (-L₁ 1) := by
+          calc
+            L 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2)
+                = (L 0 * L₁ 0) * L₁ 0 + L 0 * L₁ 1 ^ 2 := by ring
+            _ = (-(L 1 * L₁ 1)) * L₁ 0 + L 0 * L₁ 1 ^ 2 := by rw [h_sub]
+            _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * (-L₁ 1) := by ring
+        calc
+          L 0
+              = L 0 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by
+                rw [mul_div_cancel_right₀ _ hd]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * (-L₁ 1) /
+                (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [step]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) *
+                (-L₁ 1) := by ring
+          _ = a * (-L₁ 1) := rfl
+      have h_sub2 : L 1 * L₁ 1 = -(L 0 * L₁ 0) := by
+        calc
+          L 1 * L₁ 1
+              = L₁ 1 * L 1 := by ring
+          _ = -(L₁ 0 * L 0) := h_perp
+          _ = -(L 0 * L₁ 0) := by ring
+      have h1 : L 1 = a * L₁ 0 := by
+        have step :
+            L 1 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) =
+              (L 1 * L₁ 0 - L 0 * L₁ 1) * L₁ 0 := by
+          calc
+            L 1 * (L₁ 0 ^ 2 + L₁ 1 ^ 2)
+                = L 1 * L₁ 0 ^ 2 + (L 1 * L₁ 1) * L₁ 1 := by ring
+            _ = L 1 * L₁ 0 ^ 2 + (-(L 0 * L₁ 0)) * L₁ 1 := by rw [h_sub2]
+            _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * L₁ 0 := by ring
+        calc
+          L 1
+              = L 1 * (L₁ 0 ^ 2 + L₁ 1 ^ 2) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by
+                rw [mul_div_cancel_right₀ _ hd]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) * L₁ 0 /
+                (L₁ 0 ^ 2 + L₁ 1 ^ 2) := by rw [step]
+          _ = (L 1 * L₁ 0 - L 0 * L₁ 1) / (L₁ 0 ^ 2 + L₁ 1 ^ 2) *
+                L₁ 0 := by ring
+          _ = a * L₁ 0 := rfl
+      have h2 : L 2 = a * (-L₁ 1 * P 0 + L₁ 0 * P 1) := by
+        calc
+          L 2
+              = L 0 * P 0 + L 1 * P 1 := h_cont.symm
+          _ = (a * (-L₁ 1)) * P 0 + (a * L₁ 0) * P 1 := by rw [h0, h1]
+          _ = a * (-L₁ 1 * P 0 + L₁ 0 * P 1) := by ring
+      funext i
+      fin_cases i
+      · change L 0 = scaled a (perpendicularLine L₁ P) 0
+        exact h0
+      · change L 1 = scaled a (perpendicularLine L₁ P) 1
+        exact h1
+      · change L 2 = scaled a (perpendicularLine L₁ P) 2
+        exact h2
+  · intro h
+    rcases h with ⟨a, _ha, hL_eq⟩
+    constructor
+    · simp only [is_contained]
+      rw [hL_eq]
+      simp [scaled, perpendicularLine]
+      ring
+    · simp only [perpendicular]
+      rw [hL_eq]
+      simp [scaled, perpendicularLine]
+      ring
+
+end Axiom4Spec
+
 /-! ## Axiom 5 -/
 
 namespace Axiom5Spec
