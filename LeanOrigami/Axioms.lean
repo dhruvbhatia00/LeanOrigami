@@ -100,6 +100,218 @@ theorem tangent_characterization (L Ltarget : Line) (P : Point) (hL : valid L) :
       _ = Ltarget 2 * (L 0 ^ 2 + L 1 ^ 2) / (L 0 ^ 2 + L 1 ^ 2) := h1
       _ = Ltarget 2 := by rw [mul_div_cancel_right₀ _ hd]
 
+/-! ## Axiom 1 -/
+
+namespace Axiom1Spec
+
+def lineThrough (P₁ P₂ : Point) : Line :=
+  ![P₂ 1 - P₁ 1, P₁ 0 - P₂ 0,
+    (P₂ 1 - P₁ 1) * P₁ 0 + (P₁ 0 - P₂ 0) * P₁ 1]
+
+/--
+Homogeneous coefficient condition for a line through two points.
+
+The first conjunct anchors the line at `P₁`; the second says that the line's
+normal vector is orthogonal to the displacement from `P₁` to `P₂`.
+-/
+def lineThroughCondition (P₁ P₂ : Point) (L : Line) : Prop :=
+  is_contained L P₁ ∧
+    L 0 * (P₂ 0 - P₁ 0) + L 1 * (P₂ 1 - P₁ 1) = 0
+
+theorem axiom1_lineThroughCondition (P₁ P₂ : Point) (L : Line) :
+    Axiom1 P₁ P₂ L ↔ lineThroughCondition P₁ P₂ L := by
+  constructor
+  · intro h
+    rcases h with ⟨h1, h2⟩
+    refine ⟨h1, ?_⟩
+    simp [is_contained] at h1 h2
+    linear_combination h2 - h1
+  · intro h
+    rcases h with ⟨h1, hdir⟩
+    refine ⟨h1, ?_⟩
+    simp [is_contained] at h1 hdir ⊢
+    linear_combination h1 + hdir
+
+theorem axiom1_scaled_iff {P₁ P₂ : Point} {L : Line}
+    (hsep : P₁ 0 ≠ P₂ 0 ∨ P₁ 1 ≠ P₂ 1) :
+    Axiom1 P₁ P₂ L ↔ ∃ a : ℝ, L = scaled a (lineThrough P₁ P₂) := by
+  rw [axiom1_lineThroughCondition]
+  constructor
+  · intro h
+    rcases h with ⟨hP, hdir⟩
+    simp [is_contained] at hP hdir
+    rcases hsep with hx | hy
+    · use -(L 1) / (P₂ 0 - P₁ 0)
+      ext i
+      fin_cases i
+      · simp [scaled, lineThrough]
+        field_simp [sub_ne_zero.mpr (Ne.symm hx)]
+        ring_nf
+        nlinarith [hdir]
+      · simp [scaled, lineThrough]
+        field_simp [sub_ne_zero.mpr (Ne.symm hx)]
+        ring
+      · simp [scaled, lineThrough]
+        field_simp [sub_ne_zero.mpr (Ne.symm hx)]
+        ring_nf
+        linear_combination P₁ 0 * hdir - (P₂ 0 - P₁ 0) * hP
+    · use (L 0) / (P₂ 1 - P₁ 1)
+      ext i
+      fin_cases i
+      · simp [scaled, lineThrough]
+        field_simp [sub_ne_zero.mpr (Ne.symm hy)]
+        try ring
+      · simp [scaled, lineThrough]
+        field_simp [sub_ne_zero.mpr (Ne.symm hy)]
+        ring_nf
+        nlinarith [hdir]
+      · simp [scaled, lineThrough]
+        field_simp [sub_ne_zero.mpr (Ne.symm hy)]
+        ring_nf
+        linear_combination P₁ 1 * hdir - (P₂ 1 - P₁ 1) * hP
+  · intro h
+    rcases h with ⟨a, rfl⟩
+    constructor <;> simp [is_contained, scaled, lineThrough] <;> ring
+
+end Axiom1Spec
+
+/-! ## Axiom 2 -/
+
+namespace Axiom2Spec
+
+noncomputable def midpoint (P₁ P₂ : Point) : Point :=
+  ![(P₁ 0 + P₂ 0) / 2, (P₁ 1 + P₂ 1) / 2]
+
+noncomputable def perpendicularBisector (P₁ P₂ : Point) : Line :=
+  ![P₂ 0 - P₁ 0, P₂ 1 - P₁ 1,
+    ((P₂ 0 - P₁ 0) * (P₁ 0 + P₂ 0) +
+      (P₂ 1 - P₁ 1) * (P₁ 1 + P₂ 1)) / 2]
+
+/--
+Homogeneous coefficient condition for the perpendicular bisector fold.
+
+The line contains the midpoint and has normal vector parallel to the segment
+from `P₁` to `P₂`.  This avoids splitting into vertical/non-vertical cases.
+-/
+def perpendicularBisectorCondition (P₁ P₂ : Point) (L : Line) : Prop :=
+  is_contained L (midpoint P₁ P₂) ∧
+    L 0 * (P₂ 1 - P₁ 1) = L 1 * (P₂ 0 - P₁ 0)
+
+theorem axiom2_perpendicularBisector_forward (P₁ P₂ : Point) (L : Line) (hL : valid L) :
+    Axiom2 P₁ P₂ L → perpendicularBisectorCondition P₁ P₂ L := by
+  intro h
+  rw [Axiom2, folds_onto] at h
+  subst h
+  constructor
+  · simp [midpoint, is_contained, reflect]
+    have hd : L 0 ^ 2 + L 1 ^ 2 ≠ 0 := hL
+    field_simp [hd]
+    ring
+  · simp [reflect]
+    have hd : L 0 ^ 2 + L 1 ^ 2 ≠ 0 := hL
+    field_simp [hd]
+
+set_option linter.flexible false in
+theorem axiom2_perpendicularBisector_reverse (P₁ P₂ : Point) (L : Line) (hL : valid L) :
+    perpendicularBisectorCondition P₁ P₂ L → Axiom2 P₁ P₂ L := by
+  intro h
+  rcases h with ⟨hm, hp⟩
+  rw [Axiom2, folds_onto]
+  simp [midpoint, is_contained] at hm hp
+  have hm2 : L 0 * (P₁ 0 + P₂ 0) + L 1 * (P₁ 1 + P₂ 1) = 2 * L 2 := by
+    nlinarith [hm]
+  simp [reflect]
+  ext i
+  fin_cases i
+  · simp
+    have hd : L 0 ^ 2 + L 1 ^ 2 ≠ 0 := hL
+    field_simp [hd]
+    ring_nf
+    linear_combination -L 0 * hm2 + L 1 * hp
+  · simp
+    have hd : L 0 ^ 2 + L 1 ^ 2 ≠ 0 := hL
+    field_simp [hd]
+    ring_nf
+    linear_combination -L 1 * hm2 - L 0 * hp
+
+theorem axiom2_perpendicularBisector_iff (P₁ P₂ : Point) (L : Line) (hL : valid L) :
+    Axiom2 P₁ P₂ L ↔ perpendicularBisectorCondition P₁ P₂ L := by
+  constructor
+  · exact axiom2_perpendicularBisector_forward P₁ P₂ L hL
+  · exact axiom2_perpendicularBisector_reverse P₁ P₂ L hL
+
+set_option linter.flexible false in
+theorem axiom2_scaled_iff {P₁ P₂ : Point} {L : Line}
+    (hL : valid L) (hsep : P₁ 0 ≠ P₂ 0 ∨ P₁ 1 ≠ P₂ 1) :
+    Axiom2 P₁ P₂ L ↔ ∃ a : ℝ, a ≠ 0 ∧ L = scaled a (perpendicularBisector P₁ P₂) := by
+  rw [axiom2_perpendicularBisector_iff P₁ P₂ L hL]
+  constructor
+  · intro h
+    rcases h with ⟨hm, hp⟩
+    simp [midpoint, is_contained] at hm hp
+    rcases hsep with hx | hy
+    · use L 0 / (P₂ 0 - P₁ 0)
+      constructor
+      · intro ha
+        apply hL
+        have h0 : L 0 = 0 := by
+          have := congrArg (fun t => t * (P₂ 0 - P₁ 0)) ha
+          field_simp [sub_ne_zero.mpr (Ne.symm hx)] at this
+          simpa using this
+        have h1 : L 1 = 0 := by
+          rw [h0] at hp
+          have hdx : P₂ 0 - P₁ 0 ≠ 0 := sub_ne_zero.mpr (Ne.symm hx)
+          have hmul : L 1 * (P₂ 0 - P₁ 0) = 0 := by simpa using hp.symm
+          exact (mul_eq_zero.mp hmul).resolve_right hdx
+        simp [h0, h1]
+      · ext i
+        fin_cases i
+        · simp [scaled, perpendicularBisector]
+          field_simp [sub_ne_zero.mpr (Ne.symm hx)]
+          try ring
+        · simp [scaled, perpendicularBisector]
+          field_simp [sub_ne_zero.mpr (Ne.symm hx)]
+          nlinarith [hp]
+        · simp [scaled, perpendicularBisector]
+          field_simp [sub_ne_zero.mpr (Ne.symm hx)]
+          ring_nf
+          linear_combination -((P₁ 1 + P₂ 1) * hp + 2 * (P₂ 0 - P₁ 0) * hm)
+    · use L 1 / (P₂ 1 - P₁ 1)
+      constructor
+      · intro ha
+        apply hL
+        have h1 : L 1 = 0 := by
+          have := congrArg (fun t => t * (P₂ 1 - P₁ 1)) ha
+          field_simp [sub_ne_zero.mpr (Ne.symm hy)] at this
+          simpa using this
+        have h0 : L 0 = 0 := by
+          rw [h1] at hp
+          have hdy : P₂ 1 - P₁ 1 ≠ 0 := sub_ne_zero.mpr (Ne.symm hy)
+          have hmul : L 0 * (P₂ 1 - P₁ 1) = 0 := by simpa using hp
+          exact (mul_eq_zero.mp hmul).resolve_right hdy
+        simp [h0, h1]
+      · ext i
+        fin_cases i
+        · simp [scaled, perpendicularBisector]
+          field_simp [sub_ne_zero.mpr (Ne.symm hy)]
+          nlinarith [hp]
+        · simp [scaled, perpendicularBisector]
+          field_simp [sub_ne_zero.mpr (Ne.symm hy)]
+          try ring
+        · simp [scaled, perpendicularBisector]
+          field_simp [sub_ne_zero.mpr (Ne.symm hy)]
+          ring_nf
+          linear_combination -(-(P₁ 0 + P₂ 0) * hp + 2 * (P₂ 1 - P₁ 1) * hm)
+  · intro h
+    rcases h with ⟨a, _ha, rfl⟩
+    constructor
+    · simp [midpoint, is_contained, scaled, perpendicularBisector]
+      ring
+    · simp [scaled, perpendicularBisector]
+      ring
+
+end Axiom2Spec
+
 /-! ## Axiom 3 -/
 
 namespace Axiom3Spec
