@@ -97,3 +97,94 @@ lemma constructible_real_proj_mul (a b : ℝ)
   -- STEP 6: Final Extraction
   -- Since P_ab is constructible, its y-coordinate (a * b) is constructible.
   exact constructible_real_of_point_y hP_ab_cons
+
+-- We now move on to the inverse.
+/-- The inverse of a non-zero constructible number is constructible. -/
+ lemma constructible_real_proj_inv (a : ℝ)
+  (ha : constructible_real_proj a) (ha_nz : a ≠ 0) :
+  constructible_real_proj (a⁻¹) := by
+
+  -- STEP 1: Construct the foundational points
+  -- We need (a, 0) and the unit points (1, 0) and (0, 1)
+  have hP_a : cons_point ![a, 0] := by
+    apply (cons_point_iff_coords_cons a 0).mpr
+    exact ⟨ha, constructible_real_zero⟩
+
+  have hP_one_x : cons_point ![1, 0] := cons_point_one
+
+  have hP_one_y : cons_point ![0, 1] := by
+    apply (cons_point_iff_coords_cons 0 1).mpr
+    exact ⟨constructible_real_zero, constructible_real_one⟩
+
+ -- STEP 2: The Guide Line
+  -- The line passing through (a, 0) and (0, 1).
+  -- Equation: X + aY = a
+  let L_guide : Line := ![1, a, a]
+  have hL_guide_cons : cons_line L_guide := by
+    have h_ax1 : Axiom1 ![a, 0] ![0, 1] L_guide := by
+      -- Evaluates 1(a) + a(0) = a and 1(0) + a(1) = a
+      simp [Axiom1, is_contained, L_guide]
+
+    apply cons_line.axiom1 hP_a hP_one_y
+    · -- Goal 1: Prove L_guide is valid (1^2 + a^2 ≠ 0)
+      simp [valid, L_guide]
+      intro h
+      have h_one : (1 : ℝ) > 0 := by norm_num
+      have h_a_sq : a^2 ≥ 0 := sq_nonneg a
+      nlinarith [h_one, h_a_sq, h]
+    · exact h_ax1
+
+  -- STEP 3: First fold for Parallel (The Perpendicular)
+  -- Drop a perpendicular to L_guide through (1, 0).
+  -- Normal vector is (-a, 1). Equation: -aX + Y = -a
+  let L_perp : Line := ![-a, 1, -a]
+  have hL_perp_cons : cons_line L_perp := by
+    have h_ax4_1 : Axiom4 L_guide ![1, 0] L_perp := by
+      -- Evaluates containment: -a(1) + 0 = -a, and perpendicularity: 1(-a) + a(1) = 0
+      simp [Axiom4, is_contained, perpendicular, L_guide, L_perp]
+
+
+    apply cons_line.axiom4 hL_guide_cons hP_one_x
+    · -- Goal 1: Prove L_perp is valid ((-a)^2 + 1^2 ≠ 0)
+      simp [valid, L_perp]
+      intro h
+      have h_one : (1 : ℝ) > 0 := by norm_num
+      have h_a_sq : a^2 ≥ 0 := sq_nonneg a
+      nlinarith [h_one, h_a_sq, h]
+    · exact h_ax4_1
+
+  -- STEP 4: Second fold for Parallel (The Actual Parallel Line)
+  -- Drop a perpendicular to L_perp through (1, 0).
+  -- Normal vector is (1, a). Equation: X + aY = 1
+  let L_parallel : Line := ![1, a, 1]
+  have hL_parallel_cons : cons_line L_parallel := by
+    have h_ax4_2 : Axiom4 L_perp ![1, 0] L_parallel := by
+      -- Evaluates containment: 1(1) + a(0) = 1, and perpendicularity: -a(1) + 1(a) = 0
+      simp [Axiom4, is_contained, perpendicular, L_perp, L_parallel]
+
+
+    apply cons_line.axiom4 hL_perp_cons hP_one_x
+    · -- Goal 1: Prove L_parallel is valid (1^2 + a^2 ≠ 0)
+      simp [valid, L_parallel]
+      intro h
+      have h_one : (1 : ℝ) > 0 := by norm_num
+      have h_a_sq : a^2 ≥ 0 := sq_nonneg a
+      nlinarith [h_one, h_a_sq, h]
+    · exact h_ax4_2
+
+  -- STEP 5: The Intersection
+  -- Intersect the parallel line with the Y-axis (x = 0).
+  let P_inv : Point := ![0, a⁻¹]
+  have hP_inv_cons : cons_point P_inv := by
+    have h_int : intersects_at L_parallel y_axis P_inv := by
+      -- Unfold the definitions. Lean evaluates the matrix multiplication
+      -- and reduces it to a * a⁻¹ = 1.
+      simp [intersects_at, is_contained, L_parallel, y_axis, P_inv]
+      -- Use the "Group With Zero" version of the theorem!
+      exact mul_inv_cancel₀ ha_nz
+
+    -- Apply the intersection axiom!
+    exact cons_point.hIntersect hL_parallel_cons cons_y_axis P_inv h_int
+
+  -- STEP 6: Final Extraction
+  exact constructible_real_of_point_y hP_inv_cons
