@@ -1,4 +1,4 @@
-import LeanOrigami.Basic
+import LeanOrigami.Axioms
 
 --proof of axiom2
 theorem fold_is_perpendicular_bisector (L : Line) (P₁ P₂ : Point) (hL : valid L)
