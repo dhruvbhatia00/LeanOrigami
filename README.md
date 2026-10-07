@@ -6,10 +6,10 @@ The long-term goal of the project is to prove that origami-constructible numbers
 
 ## Features
 
-- **Analytic Foundation:** A robust coordinate-based model of points and lines in $\mathbb{R}^2$.
+- **Analytic Foundation:** A coordinate-based model of points and lines in $\mathbb{R}^2$.
 - **Formalized Axioms:** Implementation of the seven Huzita-Hatori axioms as algebraic predicates.
-- **Constructibility Predicates:** A mutual inductive definition (`cons_point` and `cons_line`) that tracks the provenance of every geometric object.
-- **Domain-Specific Tactic:** The `origami_construct` tactic, which allows users to write proofs using a natural, step-by-step construction language.
+- **Constructibility Predicates:** A mutual inductive definition (`cons_point` and `cons_line`) that tracks the constructibility of new lines and points.
+- **Origami Construction Tactic:** The `origami_construct` tactic, which allows users to write proofs using a natural, step-by-step construction domain specific language.
 
 ---
 
