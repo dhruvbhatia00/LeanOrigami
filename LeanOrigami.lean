@@ -1,6 +1,6 @@
-import LeanOrigami.Basic
-import LeanOrigami.Axioms
-import LeanOrigami.constructible
-import LeanOrigami.ConstructibleLemmas
-import LeanOrigami.Tactic
-import LeanOrigami.Tactic.Examples
+/-!
+# LeanOrigami
+
+The fresh library entry point. Geometry begins in Phase 1; feasibility
+experiments live in the separate tests and demos targets.
+-/

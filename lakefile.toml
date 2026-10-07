@@ -1,18 +1,37 @@
 name = "LeanOrigami"
-version = "0.1.0"
-keywords = ["math"]
+version = "0.2.0"
 defaultTargets = ["LeanOrigami"]
 
-[leanOptions]
-pp.unicode.fun = true # pretty-prints `fun a ↦ b`
-relaxedAutoImplicit = false
-weak.linter.mathlibStandardSet = true
-maxSynthPendingDepth = 3
+[[require]]
+name = "HexNumberFieldMathlib"
+git = "https://github.com/leanprover/hex-number-field-mathlib.git"
+rev = "b8ce919449329ba3b758d434147b222c69380695"
 
 [[require]]
 name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4.git"
+rev = "d870b9068518a0870842d15a0cd42637ec30b587"
+
+[[require]]
+name = "proofwidgets"
 scope = "leanprover-community"
-rev = "v4.30.0-rc2"
+git = "https://github.com/leanprover-community/ProofWidgets4"
+rev = "c643bbb3c24f8a25f9c14e3a6b1ceb13d01f3de1"
+
+[[require]]
+name = "batteries"
+git = "https://github.com/leanprover-community/batteries"
+rev = "33131f4fb10067cb3009bf4db615d9680c1ccd6b"
 
 [[lean_lib]]
 name = "LeanOrigami"
+
+[[lean_lib]]
+name = "LeanOrigamiTests"
+
+[[lean_lib]]
+name = "LeanOrigamiDemos"
+
+[[lean_exe]]
+name = "phase0-runtime"
+root = "LeanOrigamiTests.Runtime"

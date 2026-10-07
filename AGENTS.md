@@ -167,6 +167,10 @@ Use discretion to keep the development build fast.
 - Do not report a passing default build as full validation when relevant
   targets were excluded.
 
+Use local validation for checkpoints. Push checkpoints for version control;
+do not trigger GitHub Actions on each push or checkpoint. Keep the validation
+workflow manual-only unless the user requests automated CI.
+
 Keep toolchain and dependency versions reproducible. Make dependency changes
 deliberately and validate their affected consumers.
 

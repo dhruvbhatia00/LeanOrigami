@@ -401,10 +401,11 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: this document records the agreed implementation direction.
-No restart phase is complete. The previous repository review and successful
-legacy build are background evidence, not validation of the new design.
-AGENTS.md has been added locally; preservation and reset remain pending.
+Current status: Phase 0 is in progress. The previous implementation is preserved
+in the verified remote archive, and the fresh dependency baseline is pinned.
+Runtime arithmetic and widget insertion/replay experiments pass. The remaining
+dependency build, semantic proof checks, kernel timings, and checkpoint audit
+are pending. See [the Phase 0 report](docs/phase-0.md) for evidence and limitations.
 
 ## 6. References
 

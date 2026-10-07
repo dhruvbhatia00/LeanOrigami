@@ -1,118 +1,76 @@
-# Lean Origami
+# LeanOrigami
 
-This project provides a formalization of Huzita–Hatori origami axioms in Lean 4. It enables users to perform geometric constructions on a virtual "piece of paper" (modeled as the real affine plane) and formally prove that resulting points and lines are origami-constructible.
+A fresh Lean formalization of origami constructions, with exact algebraic
+computation and a planned proof-producing graphical interface.
 
-The long-term goal of the project is to prove that origami-constructible numbers form a field closed under square and cube roots, and to provide an interactive graphical interface for building these proofs.
+The restart follows [PLAN.md](PLAN.md) and [AGENTS.md](AGENTS.md). Phase 0
+establishes dependency and interface feasibility; it does not yet implement
+geometry or an origami tactic.
 
-## Features
+## Setup
 
-- **Analytic Foundation:** A coordinate-based model of points and lines in $\mathbb{R}^2$.
-- **Formalized Axioms:** Implementation of the seven Huzita-Hatori axioms as algebraic predicates.
-- **Constructibility Predicates:** A mutual inductive definition (`cons_point` and `cons_line`) that tracks the constructibility of new lines and points.
-- **Origami Construction Tactic:** The `origami_construct` tactic, which allows users to write proofs using a natural, step-by-step construction domain specific language.
+Install [elan](https://github.com/leanprover/elan), Git, and Node.js 22 or newer.
+The pinned Lean toolchain is installed automatically on first use.
 
----
-
-## Installation
-
-### Prerequisites
-
-- Lean 4 and `elan`
-- `lake` (Lean's build system, included with Lean 4)
-
-### Setup
-
-Clone the repository:
-
-```bash
-git clone https://github.com/your-repo/lean-origami.git
-cd lean-origami
-```
-
-Build the project:
-
-```bash
+```sh
+lake update
+lake exe cache get
 lake build
 ```
 
----
+On an 8 GB machine, use `LEAN_NUM_THREADS=1 lake build` for dependency builds.
+The full-validation script defaults to one thread and accepts an override.
 
-## Usage
+The manifest records exact revisions. Do not run `lake update` merely to
+refresh diagnostics: normal development uses the committed manifest and
+`lake build`. The initial Hex build can take substantially longer than
+subsequent builds; Mathlib should come from its binary cache. Restart open
+Lean editor sessions after a toolchain change so an old server cannot write
+incompatible build artifacts.
 
-You can use the `origami_construct` tactic to prove that a specific value or point is constructible. The tactic manages the "paper state," allowing you to name new points and lines as you go.
+## Validation
 
-```lean
-import LeanOrigami.Elab
+The default build checks the library. Tests and demos have separate targets:
 
-example : constructible_real_proj 0 := by
-  origami_construct
-    point O := origin
-    point I := one
-    line xAxis := axiom1 O I
-    line yAxis := axiom4 xAxis O
-
-    -- Axiom 5 (placing a point onto a line)
-    line fold := axiom5_pos I O yAxis
-
-    exact_y O
+```sh
+lake build LeanOrigamiTests LeanOrigamiDemos
+bash scripts/validate.sh
 ```
 
----
+The validation script checks all three targets, runs the arithmetic and root
+experiments, exercises the pinned ProofWidgets insertion handler, and checks
+the resulting standalone Lean proof. It requires no npm installation. Checkpoints are validated locally;
+the GitHub Actions workflow is manual-only and does not run on pushes.
 
-## Supported Tactic Commands
+To run only the arithmetic experiment after building its imports:
 
-- `point <name> := origin | one`
-- `line <name> := axiom1 <p1> <p2>`  
-  *(Line through two points)*
-- `line <name> := axiom2 <p1> <p2>`  
-  *(Perpendicular bisector)*
-- `line <name> := axiom4 <line> <point>`  
-  *(Perpendicular through a point)*
-- `line <name> := axiom5_pos/neg/linear <p1> <p2> <line>`  
-  *(Fold point onto line)*
-- `point <name> := intersection <line1> <line2>`
-- `exact_x <point> / exact_y <point>`  
-  *(Close the goal)*
+```sh
+lake exe phase0-runtime
+```
 
----
+`Feasibility.lean` contains kernel-checked semantic results and axiom reports;
+`Runtime.lean` contains executable assertions and timing output. Runtime
+assertions are tests, not proof certificates.
 
-## Project Structure
+## Widget prototype
 
-- `Basic.lean`  
-  Definitions of `Point` and `Line`, and basic incidence geometry (e.g., `is_contained`, `reflection`, `intersection`).
+Open `LeanOrigamiDemos/Widget.lean` in a Lean editor and place the cursor on
+`origami_phase0` in `submission_example`. Its panel offers an insertion link
+that replaces the tactic with `rfl`. The tactic checks that proof before
+presenting it. Save and reopen the file to confirm the ordinary proof works.
 
-- `Axioms.lean`  
-  The core algebraic predicates for the 7 Huzita-Hatori axioms.
+The automated interaction harness uses the shipped ProofWidgets JavaScript
+with a minimal editor adapter; it exercises the click event, versioned edit,
+and independent replay. It does not replace a visual test inside VS Code.
+The full origami canvas is a later phase.
 
-- `constructible.lean`  
-  The bridge between geometry and algebra. Defines `cons_point`, `cons_line`, and the concept of constructible real numbers.
+## Preservation
 
-- `Elab.lean`  
-  The metaprogramming core. Implements the `origami_construct` tactic and the `PaperState` logic.
+The previous implementation, README edits, and approved planning documents
+are preserved at commit `679c96345f0466dc3515d9068401a7ccc37388dd` on the
+pushed branch
+[`archive/pre-restart-2026-10-06`](https://github.com/dhruvbhatia00/LeanOrigami/tree/archive/pre-restart-2026-10-06).
+The restart is developed on `restart/phase-0`.
 
-- `TACTIC_PLAN.md`  
-  A roadmap for ongoing development.
-
----
-
-## Future Work
-
-The project is currently in active development. Planned milestones include:
-
-- **Axiom 6 & Cubics:**  
-  Formalizing the "mighty" sixth axiom, which allows for trisecting angles and doubling the cube by solving cubic equations.
-
-- **Field Theory:**  
-  Formally proving that the set of constructible numbers forms a subfield of $\mathbb{R}$ closed under degree-2 and degree-3 extensions.
-
-- **Interactive Widgets:**  
-  Implementing `ProofWidgets4` interfaces to allow users to click and drag folds on a visual SVG canvas, which then generates the corresponding Lean code.
-
-- **Tactic Automation:**  
-  Extending the tactic to automatically find construction sequences for common targets (e.g., midpoints, angle trisectors).
-
----
-
-## License
-
-This project is released under the Apache 2.0 License.
+See [the Phase 0 audit](docs/phase-0.md) for dependency findings,
+measurements, and validation status.
