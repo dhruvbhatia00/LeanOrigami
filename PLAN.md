@@ -401,11 +401,13 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phase 0 is in progress. The previous implementation is preserved
-in the verified remote archive, and the fresh dependency baseline is pinned.
-Runtime arithmetic and widget insertion/replay experiments pass. The remaining
-dependency build, semantic proof checks, kernel timings, and checkpoint audit
-are pending. See [the Phase 0 report](docs/phase-0.md) for evidence and limitations.
+Current status: Phase 0 is complete (2026-10-07). The previous implementation
+is preserved in the verified remote archive, and the fresh dependency baseline
+is pinned. Local library/test/demo builds, semantic proofs, native and
+interpreter arithmetic tests, and widget insertion/replay checks passed.
+Kernel timings and the checkpoint audit are recorded in
+[the Phase 0 report](docs/phase-0.md), including the remaining adapter,
+certificate, and editor-host limitations. Phase 1 has not started.
 
 ## 6. References
 

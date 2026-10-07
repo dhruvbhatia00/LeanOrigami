@@ -13,7 +13,6 @@ Install [elan](https://github.com/leanprover/elan), Git, and Node.js 22 or newer
 The pinned Lean toolchain is installed automatically on first use.
 
 ```sh
-lake update
 lake exe cache get
 lake build
 ```
@@ -51,6 +50,11 @@ lake exe phase0-runtime
 `Feasibility.lean` contains kernel-checked semantic results and axiom reports;
 `Runtime.lean` contains executable assertions and timing output. Runtime
 assertions are tests, not proof certificates.
+
+`Interpreter.lean` reuses the runtime suite through `#eval` to check native
+library loading for elaborators. Run it with
+`lake lean LeanOrigamiTests/Interpreter.lean`; Lake supplies the required
+native libraries. This check is also included in the validation script.
 
 ## Widget prototype
 

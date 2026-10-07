@@ -1,7 +1,8 @@
 # Phase 0 feasibility audit
 
-Status: resumed on 2026-10-07; Phase 0 validation is in progress. This report records observations, not a claim
-that later geometry or certification infrastructure has been implemented.
+Status: Phase 0 complete, audited on 2026-10-07. The dependency build and all semantic,
+runtime, and widget experiments passed. Geometry and construction
+certification are later phases.
 
 ## Preservation and reset
 
@@ -98,17 +99,17 @@ separately. No compatible published Hex cache was established for this Mac.
 
 ## Runtime measurements
 
-The compiled executable completed every assertion successfully. An initial
-run during bridge compilation reported the following elapsed times (1 ms
-clock resolution; zero means below that resolution):
+The compiled executable completed every assertion successfully. The user’s
+completed validation run reported the following elapsed times (1 ms clock
+resolution; zero means below that resolution):
 
 | Experiment | Elapsed |
 | --- | ---: |
 | Rational inverse and order | 0 ms |
 | Construct principal square-root values | 0 ms each |
-| Irrational arithmetic sequence, including inversion | 43 ms |
-| Roots of `x² - √2`, equation checks and signs | 51 ms |
-| Roots of `x³ - 2`, real filtering and equation check | 21 ms |
+| Irrational arithmetic sequence, including inversion | 41 ms |
+| Roots of `x² - √2`, equation checks and signs | 37 ms |
+| Roots of `x³ - 2`, real filtering and equation check | 18 ms |
 | Zero-polynomial classification | 0 ms |
 | 40-bit approximation and float conversion | 0 ms |
 
@@ -116,28 +117,63 @@ The display value was `1.414214`. Square-root construction alone may defer
 work internally; the identity and root-solving tests exercise the values.
 These are feasibility observations, not worst-case performance guarantees.
 
-## Pause and resume history
+## Proof checking and interpreter measurements
 
-The user requested stopping the build. The main Lake build and its active
-compiler were terminated; completed artifacts remain in `.lake`.
-Arithmetic tests, widget registration, the JavaScript click harness, and
-independent proof replay passed. The full bridge build, semantic proof tests,
-kernel timings, and final audit remain unfinished. Changes are not yet
-committed on `restart/phase-0`.
+Reproducing the kernel profile after building imports:
 
-Resume with `LEAN_NUM_THREADS=1 bash scripts/validate.sh`. Do not clean the
-build tree. The editor server was temporarily suspended to prevent automatic
-duplicate builds; its process IDs are recorded in
-`/private/tmp/leanorigami-paused-editor-pids.json`. Before resuming those
-processes with SIGCONT, verify their identities and finish the dependency
-build, or otherwise disable the editor's automatic dependency building.
-The suspended PIDs at pause were 81889, 82073, and 82586; they may no longer
-exist in a future session. Do not signal reused PIDs blindly.
+```sh
+LEAN_NUM_THREADS=1 lake env lean -Dtrace.profiler=true \
+  -Dtrace.profiler.threshold=0 LeanOrigamiTests/Feasibility.lean
+```
 
-Build and experiment logs are in `/private/tmp/leanorigami-phase0-*`.
-The latest dependency-build log is `leanorigami-phase0-build4.log`.
+The completed run reported these `Kernel` trace times:
 
-On 2026-10-07 validation resumed with the existing artifacts. The suspended
-editor server was verified to be orphaned (parent PID 1), and it and its
-children were terminated. No suspended editor process needs to be resumed.
-The resumed validation log is `/private/tmp/leanorigami-phase0-resume-20261007.log`.
+| Declaration | Kernel time |
+| --- | ---: |
+| Real interpretation injectivity | 0.791 ms |
+| Real order correspondence | 0.776 ms |
+| `sqrtTwo_sq` | 0.340 ms |
+| `irrational_sequence` | 14.982 ms |
+| Algebraic root membership correspondence | 0.090 ms |
+| Approximation containment | 0.366 ms |
+
+The irrational proof elaboration took 151.465 ms separately. These timings
+check new declarations against compiled dependencies; they do not recheck
+all imported proofs or include import startup. The CLI invocation took
+several minutes overall, so kernel time must not be confused with interactive
+startup latency. The compact proof path is feasible for this example, not a
+performance guarantee for arbitrary root certificates.
+
+The maintained interpreter suite passed with 219 ms for the irrational
+sequence, 203 ms for the algebraic quadratic, and 95 ms for the cubic.
+Compiled and interpreted runs both perform exact arithmetic; neither test
+result is admitted as theorem evidence.
+
+## Validation and remaining boundaries
+
+The user completed `LEAN_NUM_THREADS=1 bash scripts/validate.sh`: Lake
+reported success for all 9,933 jobs (including reused dependencies), all
+runtime assertions passed, and the widget click harness passed. A separate
+check of the maintained `Interpreter.lean` also passed through `lake lean`;
+this path is now included in the validation script. It checks the native
+library loading needed by elaborator execution, reusing the runtime suite.
+The generated standalone widget proof was checked independently.
+
+The seven printed axiom reports in `Feasibility.lean` contain only
+`propext`, `Classical.choice`, and `Quot.sound`. The widget submission theorem
+has no axioms. No project proof holes or unproved axioms were introduced.
+Runtime assertions remain separate from theorem evidence.
+
+The real subtype is a feasibility probe: its full ordered-field API remains
+Phase 1 work. Arbitrary selected-root certificates and concrete construction
+replay remain later work; these experiments do not benchmark that complete
+pipeline. Actual editor integration still requires a visual host test.
+Upstream linter warnings were replayed by Lake; they are not new project
+errors and do not mean those dependencies rebuilt.
+
+Checkpoint audit: the archive, reproducible pins, separate validation paths,
+backend experiments, proof/runtime measurements, and widget insertion
+prototype satisfy Phase 0. Reviewed module separation, public documentation,
+source proof-hole scan, transitive axiom reports, and final diff. No changes
+to later-phase acceptance criteria were made. Validation was local; no
+GitHub Actions run was requested.
