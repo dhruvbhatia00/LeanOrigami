@@ -3,9 +3,10 @@
 A fresh Lean formalization of origami constructions, with exact algebraic
 computation and a planned proof-producing graphical interface.
 
-The restart follows [PLAN.md](PLAN.md) and [AGENTS.md](AGENTS.md). Phase 0
-establishes dependency and interface feasibility; it does not yet implement
-geometry or an origami tactic.
+The restart follows [PLAN.md](PLAN.md) and [AGENTS.md](AGENTS.md). The library
+provides exact real algebraic coordinates, normalized lines, reflection,
+intersection, and the seven fold relations. Construction programs, automatic
+fold finding, and the origami GUI are later phases.
 
 ## Setup
 
@@ -27,6 +28,12 @@ subsequent builds; Mathlib should come from its binary cache. Restart open
 Lean editor sessions after a toolchain change so an old server cannot write
 incompatible build artifacts.
 
+Compiled dependency files avoid rebuilding Hex, but a fresh Lean process
+still loads its imports. Keep an LSP session open while working in one file,
+build the changed module before switching files, and reserve full validation
+for checkpoints. Import the smaller geometry modules when Hex is not needed;
+avoid simultaneous builds and repeated server restarts on an 8 GB machine.
+
 ## Validation
 
 The default build checks the library. Tests and demos have separate targets:
@@ -47,12 +54,15 @@ To run only the arithmetic experiment after building its imports:
 lake exe phase0-runtime
 ```
 
-`Feasibility.lean` contains kernel-checked semantic results and axiom reports;
-`Runtime.lean` contains executable assertions and timing output. Runtime
-assertions are tests, not proof certificates.
+`Geometry.lean` contains examples of all seven fold rules and geometric
+boundary cases. `Feasibility.lean` checks the public scalar and exact geometry
+interfaces alongside the original Hex experiments. Both print axiom reports.
+`Runtime.lean` contains executable assertions and timing output; these tests
+are not proof certificates.
 
-`Interpreter.lean` reuses the runtime suite through `#eval` to check native
-library loading for elaborators. Run it with
+`Interpreter.lean` reuses the runtime suite through `#eval` and exercises the
+public scalar and geometry operations to check that they execute inside Lean.
+Run it with
 `lake lean LeanOrigamiTests/Interpreter.lean`; Lake supplies the required
 native libraries. This check is also included in the validation script.
 
@@ -78,3 +88,17 @@ The restart is developed on `restart/phase-0`.
 
 See [the Phase 0 audit](docs/phase-0.md) for dependency findings,
 measurements, and validation status.
+
+## Geometry modules
+
+Import `LeanOrigami` for the complete public API. Coordinate geometry can
+also be imported without Hex, for example `LeanOrigami.Geometry.Reflection`.
+It is shared between exact scalars and the real plane. The real interpretation
+proves equality with Mathlib's reflection and perpendicularity notions.
+
+Fold relations describe a proposed crease. Legal selections additionally
+require finitely many solutions over the whole real plane. These definitions
+do not yet establish a construction history or implement a fold solver.
+
+See [the Phase 1 audit](docs/phase-1.md) for module responsibilities,
+exceptional cases, validation status, and the remaining later-phase work.

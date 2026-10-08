@@ -1,11 +1,11 @@
 import HexNumberFieldMathlib
+import LeanOrigami.Geometry.Exact
 
 /-!
 # Phase 0: exact arithmetic and semantic correspondence
 
-These experiments establish the dependency interfaces before geometry is
-implemented. The real subtype here is a feasibility probe, not a second
-algebraic-number implementation or the final public geometry API.
+The Phase 0 experiments now use the public Phase 1 scalar and geometry
+interfaces. No separate real subtype is maintained in the tests.
 
 Theorems reuse verified correspondence results. Runtime experiments are
 separate: passing an executable check is not used as a proof premise.
@@ -15,33 +15,7 @@ namespace LeanOrigamiTests.Feasibility
 
 open Hex
 
-/-- The released complex backend restricted by its exact reality test. -/
-abbrev RealValue := { a : AlgebraicNumber // a.isReal = true }
-
-/-- Interpretation of the real subtype in Mathlib's reals. -/
-noncomputable def RealValue.toReal (a : RealValue) : ℝ := a.val.toComplex.re
-
-/-- No information is lost when interpreting a real backend value. -/
-theorem RealValue.toReal_injective : Function.Injective RealValue.toReal := by
-  intro a b h
-  apply Subtype.ext
-  apply AlgebraicNumber.toComplex_injective
-  apply Complex.ext h
-  rw [(AlgebraicNumber.isReal_iff a.val).mp a.property,
-    (AlgebraicNumber.isReal_iff b.val).mp b.property]
-
-/-- The executable order becomes the ordinary real order on this subtype. -/
-theorem RealValue.lt_iff (a b : RealValue) :
-    a.val < b.val ↔ a.toReal < b.toReal := by
-  rw [AlgebraicNumber.lt_iff]
-  simp [RealValue.toReal, (AlgebraicNumber.isReal_iff a.val).mp a.property,
-    (AlgebraicNumber.isReal_iff b.val).mp b.property]
-
-/-- Executable addition stays within the real subtype. -/
-theorem add_isReal (a b : RealValue) : (a.val + b.val).isReal = true := by
-  rw [AlgebraicNumber.isReal_iff, AlgebraicNumber.add_toComplex]
-  simp [(AlgebraicNumber.isReal_iff a.val).mp a.property,
-    (AlgebraicNumber.isReal_iff b.val).mp b.property]
+open LeanOrigami ComplexOrder
 
 /-- A concrete irrational, with the positive principal square-root branch. -/
 def sqrtTwo : AlgebraicNumber := (2 : AlgebraicNumber).sqrt
@@ -80,8 +54,56 @@ theorem approximation_contains (a : AlgebraicNumber) (precision : Int) :
     a.toComplex ∈ (a.approx precision).set :=
   AlgebraicNumber.approx_mem a precision
 
-#print axioms RealValue.toReal_injective
-#print axioms RealValue.lt_iff
+/-- An irrational value in the public real scalar type. -/
+def realSqrtTwo : Scalar := ⟨sqrtTwo, by
+  change sqrtTwo.isReal = true
+  rw [AlgebraicNumber.isReal_iff, sqrtTwo_semantics]
+  rw [Complex.sqrt_of_nonneg (by norm_num : (0 : ℂ) ≤ 2)]
+  simp⟩
+
+/-- The subtype retains the exact square-root identity. -/
+theorem realSqrtTwo_sq : realSqrtTwo ^ 2 = 2 := by
+  apply Subtype.ext
+  exact sqrtTwo_sq
+
+/-- The positive real branch has its expected interpretation. -/
+theorem realSqrtTwo_toReal : Scalar.toReal realSqrtTwo = Real.sqrt 2 := by
+  change sqrtTwo.toComplex.re = _
+  rw [sqrtTwo_semantics]
+  simpa using (Complex.re_sqrt_ofReal (a := 2))
+
+example : (0 : Scalar) < realSqrtTwo := by
+  rw [← Scalar.toReal_lt, Scalar.toReal_zero, realSqrtTwo_toReal]
+  positivity
+
+-- Arithmetic proofs work on variables, without executing Hex's root search.
+example (a b : Scalar) : Scalar.realHom (a / b) = Scalar.realHom a / Scalar.realHom b := by
+  exact map_div₀ Scalar.realHom a b
+
+example (a : Scalar) (h : a ≠ 0) : a * a⁻¹ = 1 := by
+  exact mul_inv_cancel₀ (G₀ := Scalar) (a := a) h
+example : (2 / 3 : Scalar) + 1 / 3 = 1 := by norm_num
+example (q : ℚ) : Scalar.realHom (q : Scalar) = (q : ℝ) := map_ratCast Scalar.realHom q
+
+-- An irrational coefficient is permitted, with no slope restriction.
+example : (Line.normalize (1 : Scalar) realSqrtTwo 0 (by norm_num)).Contains
+    (realSqrtTwo, -1) := by simp
+
+-- Reflection at an irrational horizontal coordinate remains exact.
+example : (Line.normalize (1 : Scalar) 0 realSqrtTwo (by norm_num)).reflect (0, 0) =
+    (2 * realSqrtTwo, 0) := by
+  simp [Line.normalize, Line.reflect, Line.residual, Line.normalSq]
+
+example (l : Line Scalar) (p : Point Scalar) : (l.reflect p).toReal.toPlane =
+    EuclideanGeometry.reflection l.toReal.affine p.toReal.toPlane :=
+  l.exact_reflect_eq_mathlib p
+
+#print axioms realSqrtTwo_sq
+#print axioms realSqrtTwo_toReal
+#print axioms Line.exact_reflect_eq_mathlib
+#print axioms exact_intersection_legal
+#print axioms Scalar.toReal_injective
+#print axioms Scalar.toReal_lt
 #print axioms sqrtTwo_sq
 #print axioms irrational_sequence
 #print axioms sqrtTwo_semantics

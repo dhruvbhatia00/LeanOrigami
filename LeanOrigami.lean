@@ -1,6 +1,8 @@
+import LeanOrigami.Geometry.Exact
+
 /-!
 # LeanOrigami
 
-The fresh library entry point. Geometry begins in Phase 1; feasibility
-experiments live in the separate tests and demos targets.
+Exact scalar support, coordinate geometry, real interpretation, and the
+seven fold relations with finite-choice semantics.
 -/

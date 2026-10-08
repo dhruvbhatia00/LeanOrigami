@@ -225,21 +225,147 @@ assumption about a dependency may be hidden in the next phase.
 
 ### Phase 1 — Geometry and the construction specification
 
-Implement scalar transport, points, normalized valid lines, incidence,
-perpendicularity, reflection, and transverse intersection. Prove their
-basic identities and geometric interpretation. Specify all seven fold
-relations and the finite-choice construction semantics independently of
-the executable solver.
+**Goal:** provide exact geometric objects and precise statements of what
+each fold means. By the end, we can prove that a supplied crease performs
+a specified fold. Construction programs, automatic fold finding, and the
+GUI remain in later phases.
 
-Audit the intended case distinctions for every operation. In particular,
-review whether coincident inputs leave finitely or infinitely many solutions
-rather than rejecting them indiscriminately. Axiom 7 takes two input lines.
+Work through the following steps in dependency order. Keep scalar support,
+basic geometry, real interpretation, and fold rules in modules with clear
+responsibilities. Settle module boundaries as the interfaces become clear;
+do not put the entire phase in one file or create a wrapper for every lemma.
+Keep examples in separate test files and add them to the validation path.
 
-**Tests and acceptance:** reflection across `x=1` sends `x=0` to `x=2`;
-normalization respects nonzero scaling; invalid lines are unrepresentable or
-rejected; coincident-line intersections and underconstrained folds are not
-legal steps. Include simple geometric examples of all seven relations.
-Complete a specification audit before downstream automation relies on it.
+#### 1. Finish the real-number interface
+
+- Build on the Phase 0 choice: Hex algebraic numbers together with evidence
+  that their exact `isReal` test succeeds. Reuse Hex's arithmetic engine.
+- Provide zero, one, rational values, addition, subtraction, multiplication,
+  division, equality, and order, with the field and order laws needed by
+  geometry. Prove that the operations preserve reality. Follow Lean's field
+  convention for division, while requiring nonzero denominators wherever a
+  geometric formula depends on division being invertible.
+- Provide an injective interpretation into Mathlib's `ℝ`, preserving
+  arithmetic, equality, and order. Keep this mathematical interpretation
+  separate from executable arithmetic and display approximations.
+- Refactor the Phase 0 subtype probe into the library interface where useful;
+  update its tests rather than keep a competing scalar implementation.
+
+**Checks:** rational arithmetic, an irrational value, comparison, and division
+by a nonzero value. Include proofs about variables through the real
+interpretation, not only calculations on fixed examples. Audit this interface
+before making geometry depend on it.
+
+#### 2. Define points and valid, normalized lines
+
+- Represent points by two real algebraic coordinates. Provide their
+  interpretation in `ℝ²` and prove that equality is preserved and reflected.
+- Represent a line by `a*x + b*y = c`, with `a` and `b` not both zero.
+  Make invalid lines unrepresentable or reject them at the public constructor.
+  Vertical lines must work without a special slope representation.
+- Normalize coefficients to `(1, b/a, c/a)` if `a ≠ 0`, and otherwise to
+  `(0, 1, c/b)`. Prove the denominators used here are nonzero.
+- Prove normalization preserves which points lie on the line, is unchanged
+  by nonzero scaling, and gives the same representation exactly when the
+  original coefficients describe the same geometric line. Include a
+  uniqueness/idempotence result so repeated normalization changes nothing.
+
+**Checks:** horizontal and vertical lines; `x + y = 1` versus
+`2*x + 2*y = 2`; negative scaling; an irrational coefficient; rejection of
+`a = b = 0`, for both zero and nonzero `c`.
+
+#### 3. Implement basic geometry and prove its meaning
+
+- Define incidence (a point lies on a line), perpendicularity, and the line
+  through two distinct points. State the distinctness requirement explicitly.
+- Define reflection across a valid line. Prove its denominator is nonzero,
+  reflecting twice returns the original point, and the fixed points are
+  exactly the points on the crease. Connect reflection and perpendicularity
+  to the corresponding geometry in Mathlib over `ℝ²`, rather than merely
+  assigning geometric names to coordinate formulas.
+- Define intersection for two lines whose coefficient determinant is
+  nonzero. Prove the result lies on both lines and is their unique common
+  point. Distinguish parallel distinct lines from coincident lines; neither
+  supplies a unique intersection.
+- Share coordinate formulas over suitable ordered fields where this helps
+  the real interpretation. Keep statements with variables usable without
+  executing Hex, and avoid building an unnecessarily general geometry library.
+
+**Checks:** reflection across `x = 1` sends `(0,0)` to `(2,0)`;
+a point on the crease stays fixed; reflection twice returns the input;
+horizontal/vertical and oblique intersections work. Parallel and coincident
+lines cannot be used as unique-intersection steps.
+
+#### 4. State all seven fold relations
+
+Each relation is a proposition about its inputs and a proposed valid crease.
+Use incidence and reflection to state the actual geometric conditions:
+
+| Rule | What the proposed crease must do |
+| --- | --- |
+| 1 | Pass through both supplied points. |
+| 2 | Reflect the first supplied point onto the second. |
+| 3 | Reflect the first supplied line onto the second as a whole line. |
+| 4 | Pass through the supplied point and be perpendicular to the supplied line. |
+| 5 | Reflect one supplied point onto the supplied line and pass through the other supplied point. |
+| 6 | Reflect each of two supplied points onto its corresponding target line. |
+| 7 | Reflect the supplied point onto the first supplied line and be perpendicular to the second supplied line. |
+
+For rule 3, prove that the chosen definition expresses equality of the
+reflected line and the target line, not just an intersection or one matching
+point. Rule 7 has two input lines. Keep all seven meanings independent of
+the future solver and any list of computed candidates.
+
+**Checks:** a separate, readable geometric example for every rule, proving
+that its chosen crease satisfies the relation. These examples need not yet
+show that all their inputs have a construction history.
+
+#### 5. Specify legal finite-choice steps and audit exceptional cases
+
+- Separate satisfying a fold relation from being a permitted construction
+  step. A crease may satisfy an underconstrained relation without being a
+  legal way to construct a new object.
+- Define admissibility using finiteness of the set of distinct crease
+  solutions in real geometry. Do not substitute finiteness of a solver's
+  output or restrict this set to the algebraic values already represented.
+- A legal selected fold must both be admissible and satisfy its relation.
+  An empty solution set is finite but provides no crease to select. An
+  infinite solution set is underconstrained and cannot provide a legal step.
+- Prepare a case review for each rule: ordinary inputs, coincident points,
+  coincident or parallel lines, points already on target lines, and whether
+  the resulting solution set is empty, finite, or infinite. Do not reject
+  every coincident-input case without checking its geometry.
+- Prove representative exclusions now, including that rule 1 with identical
+  input points cannot supply a legal finite-choice fold. Keep unique
+  intersection requirements explicit as well.
+
+This phase establishes the semantic rule and reviews the cases that later
+implementations must cover. Executable admissibility guards, full solver
+coverage, polynomial elimination, and the numerical bounds for all seven
+rules are completed with their implementations in Phases 2–3. Record any
+unsettled case explicitly; do not silently add a restriction to avoid it.
+
+#### 6. Complete the specification audit
+
+Before downstream automation relies on these definitions:
+
+- Review every public geometric definition and fold statement against its
+  intended meaning, including representation independence and all required
+  nonzero or distinctness assumptions.
+- Check the real interpretation, reflection identities, intersection
+  uniqueness, all seven fold examples, and representative invalid or
+  underconstrained cases in separate tests.
+- Check axiom dependencies of the main interpretation and geometry theorems;
+  allow only the ordinary Mathlib foundations. Leave no proof holes.
+- Review module organization, names, documentation, duplication, and the
+  replacement of Phase 0 probes. Run the relevant local library and test
+  targets, and record the audit outcome and any later-phase obligations.
+
+**Acceptance:** a usable real scalar interface; points and valid normalized lines
+with faithful real interpretation; proved basic geometry; all seven fold
+relations; finite-choice semantics that exclude underconstrained selections;
+the examples and rejection checks above; and a completed specification audit.
+This does not yet claim a fold solver or a proof of construction history.
 
 ### Phase 2 — Programs, checker soundness, and basic execution
 
@@ -401,13 +527,21 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phase 0 is complete (2026-10-07). The previous implementation
+Current status: Phases 0 and 1 are complete (2026-10-07). The previous implementation
 is preserved in the verified remote archive, and the fresh dependency baseline
 is pinned. Local library/test/demo builds, semantic proofs, native and
 interpreter arithmetic tests, and widget insertion/replay checks passed.
 Kernel timings and the checkpoint audit are recorded in
 [the Phase 0 report](docs/phase-0.md), including the remaining adapter,
-certificate, and editor-host limitations. Phase 1 has not started.
+certificate, and editor-host limitations.
+
+Phase 1 provides the executable real algebraic field, canonical valid lines,
+proved reflection and intersection geometry, faithful Mathlib interpretation,
+all seven fold relations, and real finite-choice legality. Separate examples,
+axiom audits, and the full local validation script passed, including native
+and interpreter execution and widget replay. See [the Phase 1 audit](docs/phase-1.md)
+for the exceptional-case review and remaining solver/provenance obligations.
+Phase 2 has not started.
 
 ## 6. References
 

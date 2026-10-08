@@ -1,3 +1,4 @@
 import LeanOrigamiTests.Feasibility
+import LeanOrigamiTests.Geometry
 
-/-! Phase 0 feasibility tests. Build explicitly with `lake build LeanOrigamiTests`. -/
+/-! Separate scalar, geometry, and fold-specification proof examples. -/
