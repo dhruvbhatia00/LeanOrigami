@@ -25,6 +25,12 @@ abbrev Point (K : Type*) := K × K
   c : K
   normalized : a = 1 ∨ (a = 0 ∧ b = 1)
 
+/-- Equality is executable by comparing the three canonical coefficients. -/
+instance {K : Type*} [Zero K] [One K] [DecidableEq K] : DecidableEq (Line K) :=
+  fun l m => decidable_of_iff (l.a = m.a ∧ l.b = m.b ∧ l.c = m.c)
+    ⟨fun h => Line.ext h.1 h.2.1 h.2.2,
+      fun h => ⟨congrArg Line.a h, congrArg Line.b h, congrArg Line.c h⟩⟩
+
 namespace Line
 variable {K : Type*} [Field K] [LinearOrder K] [IsStrictOrderedRing K]
 

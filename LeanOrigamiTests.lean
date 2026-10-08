@@ -1,4 +1,5 @@
 import LeanOrigamiTests.Feasibility
 import LeanOrigamiTests.Geometry
+import LeanOrigamiTests.Construction
 
-/-! Separate scalar, geometry, and fold-specification proof examples. -/
+/-! Separate scalar, geometry, and construction proof examples. -/

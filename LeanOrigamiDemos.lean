@@ -1,3 +1,4 @@
 import LeanOrigamiDemos.Widget
+import LeanOrigamiDemos.Subdivision
 
-/-! Phase 0 widget demonstrations. Build explicitly with `lake build LeanOrigamiDemos`. -/
+/-! Replayable construction proofs and the widget prototype. Build explicitly with `lake build LeanOrigamiDemos`. -/

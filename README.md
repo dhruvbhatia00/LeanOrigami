@@ -5,8 +5,9 @@ computation and a planned proof-producing graphical interface.
 
 The restart follows [PLAN.md](PLAN.md) and [AGENTS.md](AGENTS.md). The library
 provides exact real algebraic coordinates, normalized lines, reflection,
-intersection, and the seven fold relations. Construction programs, automatic
-fold finding, and the origami GUI are later phases.
+intersection, and the seven fold relations. Replayable construction programs
+now certify rules 1, 2, and 4 and unique intersections. The remaining fold
+solvers and the origami GUI are later phases.
 
 ## Setup
 
@@ -102,3 +103,32 @@ do not yet establish a construction history or implement a fold solver.
 
 See [the Phase 1 audit](docs/phase-1.md) for module responsibilities,
 exceptional cases, validation status, and the remaining later-phase work.
+
+## Construction programs
+
+Open `LeanOrigamiDemos/Subdivision.lean` for a complete text example. It starts
+with `(0,0)` and `(1,0)`, constructs the axes, and constructs the points
+`(1/2,0)`, `(1/4,0)`, and `(3/4,0)`. Every instruction saves its requested
+operation, references to earlier objects, and an exact selected output.
+Indices 0 and 1 name the seeds; each instruction appends one object.
+
+`Program.run` checks the program and returns its objects or a structured
+error. `Program.accepts` additionally checks a selected final coordinate
+against a target. `Program.accepts_sound` turns a kernel-checked acceptance
+proof into a theorem that the requested real number is constructible.
+The demo uses exact rationals with `decide +kernel` for small certificates;
+`Interpreter.lean` executes the same recipe using Hex's `Scalar`. Runtime
+assertions are separate from proof evidence.
+
+The standard Lean data syntax is the initial text interface. The program
+format includes all seven fold requests; operations 3, 5, 6, and 7 currently
+return explicit unsupported-operation errors. Missing or wrong-kind
+references, underconstrained folds, non-unique intersections, forged outputs,
+and target mismatches are rejected.
+
+The construction module guide, data flow, and audit are in
+[the Phase 2 report](docs/phase-2.md). To check just the new proofs and demo:
+
+```sh
+lake build LeanOrigamiTests.Construction LeanOrigamiDemos.Subdivision
+```

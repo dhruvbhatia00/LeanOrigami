@@ -369,15 +369,139 @@ This does not yet claim a fold solver or a proof of construction history.
 
 ### Phase 2 — Programs, checker soundness, and basic execution
 
-Implement the program representation, exact object references, interpretation,
-and certification. Support base points, operations 1, 2, and 4, and
-intersections. Prove the general soundness argument and instantiate these
-primitive cases. Add a minimal text entry point for replayable programs.
+**Goal:** write a finite construction program and obtain a kernel-checkable
+proof that its final point was legally constructed and has the claimed
+coordinates. Phase 1 supplies geometry; this phase adds construction history,
+execution, and certification.
 
-**Tests and acceptance:** build axes and rational subdivision points; prove
-the final coordinates are `1/2`, `1/4`, and `3/4`. Reject malformed references,
-wrong object types, inadmissible steps, and forged outputs. Check the exported
-theorems' axiom dependencies and replay in a fresh Lean session.
+Work in the following dependency order. Keep program data, mathematical
+construction rules, primitive implementations, checker proofs, and text
+integration in modules with clear responsibilities. Keep the foundation
+independent of the text interface and future widget. Finalize file names as
+the interfaces settle, and document where each responsibility lives.
+
+#### 1. Represent construction programs
+
+- Use a finite sequence of instructions referring to earlier objects. Start
+  with exactly `(0,0)` and `(1,0)`; axes and other objects must be constructed.
+- Distinguish point and line references. Validate raw references before using
+  them: reject missing, forward, or wrong-kind references. If internal types
+  rule these out, retain explicit checks at the input boundary.
+- Record the requested fold and its input references separately from its
+  selected exact output or certificate. An arbitrary algebraic value is not
+  evidence that the corresponding object has been constructed.
+- Accommodate all seven fold operations in the program design from the start,
+  reusing the Phase 1 input roles. Implement execution for rules 1, 2, and 4
+  here; report rules 3, 5, 6, and 7 as unsupported until Phase 3. They must not
+  acquire an unchecked acceptance path.
+- Leave room for multiple outcomes in Phase 3. Persist a selected outcome by
+  exact identity or certificate, never solely by solver ordering or a float.
+
+**Checks:** a small program with several dependent steps; missing and forward
+references; a line supplied where a point is required; an unsupported fold.
+
+#### 2. Define mathematical construction histories
+
+- Define what it means for points and lines to be constructible from the
+  permitted initial points using legal folds and unique intersections.
+  Inputs to each step must already have construction histories.
+- Use the Phase 1 geometric relations and finite-choice legality over all
+  real creases. Do not define validity merely as successful execution of the
+  checker or membership in a solver's candidate list.
+- Define the meaning of program states and outputs, including how exact
+  objects are interpreted in real geometry. Use `Geometry/Exact.lean` and
+  its Mathlib connections instead of duplicating coordinate formulas.
+- State the relationship between a valid program history and mathematical
+  constructibility. The statement must remain usable when the remaining
+  primitive implementations are added.
+
+**Checks:** initial points have construction histories; a valid step extends
+one; merely supplying coordinates cannot introduce a new constructed object.
+Audit these definitions before building the checker on top of them.
+
+#### 3. Implement and certify the first operations
+
+| Operation | Computation and required justification |
+| --- | --- |
+| Axiom 1 | Construct the line through distinct points; reuse the Phase 1 uniqueness and admissibility results. Reject identical inputs. |
+| Axiom 2 | Construct the perpendicular bisector of distinct points. Prove it reflects the first onto the second and is the unique real crease. Reject identical points, which leave infinitely many choices. |
+| Axiom 4 | Construct the line through the point perpendicular to the supplied line. Prove existence and uniqueness, including when the point is already on the supplied line. |
+| Intersection | Use the nonzero-determinant guard and the proved unique-intersection formula. Reject both parallel distinct and coincident lines. |
+
+For each supported fold, connect executable guards to semantic admissibility,
+prove that the result satisfies the original relation, and prove completeness
+over real crease solutions. The three supported folds each have exactly one
+crease for admissible inputs. Reuse or extend Phase 1 lemmas rather than
+introducing competing geometry implementations.
+
+**Checks:** representative examples of each operation, horizontal and vertical
+cases, an oblique case, and the invalid cases above. Keep operation selection
+explicit: the solver answers a requested fold and does not search for an
+entire construction sequence.
+
+#### 4. Build the checker and prove soundness
+
+- Interpret a program step by step, resolving inputs from the accepted prior
+  state. Check input provenance, admissibility, and each selected output.
+- Keep outcome computation separate from certification. A checked exact
+  output and the relevant uniqueness/admissibility lemmas may suffice without
+  rerunning exhaustive search.
+- Prove that every accepted step preserves the state invariant, then prove
+  that every accepted program produces mathematically constructible objects.
+- Include final-target identification: selecting a point coordinate and
+  claiming a value must require proof of exact equality to that value.
+  Constructibility of an unrelated output does not prove the requested goal.
+- Connect executable acceptance to kernel-checkable evidence. Do not use
+  `native_decide`, unsafe evaluation, or an unchecked success flag as proof.
+- Report malformed inputs, underconstrained folds, absent unique
+  intersections, unsupported operations, and resource failures distinctly
+  enough to explain the result. A resource failure is not a geometric proof.
+
+**Checks:** successful multi-step certification; forged crease and intersection
+outputs; an unconstructed input; an incorrect final target. Check the general
+soundness theorem's transitive axiom dependencies.
+
+#### 5. Add a minimal text interface and end-to-end examples
+
+- Provide a small Lean text entry point for describing a program, choosing
+  its final point coordinate, and obtaining the corresponding proof. An
+  explicit Lean data representation is sufficient initially; a large custom
+  syntax is not required.
+- Use the same program and checker interfaces intended for the future GUI.
+  Reopening and checking a saved example must require no interactive state.
+- Starting only from `(0,0)` and `(1,0)`, construct the coordinate axes as
+  lines and rational subdivision points on the initial axis. Prove the final
+  points have coordinates `(1/2,0)`, `(1/4,0)`, and `(3/4,0)`.
+- Keep these programs in separate readable test/demo files. Show their
+  construction histories as well as their final coordinate conclusions.
+
+**Checks:** replay the examples in a fresh Lean session; reject a target
+mismatch and representative malformed text inputs; test execution separately
+from theorem checking. Obtaining a point off the initial axis remains part
+of Phase 3.
+
+#### 6. Complete the program and checker audit
+
+- Compare the implementation with every requirement above, especially input
+  provenance, finite-choice legality, and exact final-target identification.
+- Confirm that extending support to rules 3, 5, 6, and 7 will extend the
+  existing program/checker structure without replacing its construction
+  semantics. Their solvers, multiple branches, and remaining exceptional-case
+  proofs belong to Phase 3.
+- Review module boundaries, documentation, duplication, and error behavior.
+  Remove temporary proof holes and development experiments.
+- Run local validation for the library and all maintained tests/demos.
+  Inspect axiom dependencies of the general soundness theorem and exported
+  end-to-end proofs, allowing only the ordinary Mathlib foundations.
+- Record the audit outcome, replay evidence, and any performance limitations.
+  Push the checkpoint for version control without triggering GitHub Actions.
+
+**Acceptance:** a replayable program starting from the two permitted points
+constructs the axes and the three specified subdivision points; the checker
+certifies every step and the exact final values; invalid references, wrong
+input kinds, inadmissible steps, unsupported operations, and forged outputs
+are rejected. The general soundness theorem and exported examples pass the
+proof-dependency audit. The GUI and remaining fold solvers are later phases.
 
 ### Phase 3 — Complete primitive folding and elementary arithmetic
 
@@ -527,7 +651,8 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phases 0 and 1 are complete (2026-10-07). The previous implementation
+Current status: Phase 2 is complete (2026-10-08). Phases 0 and 1 completed
+on 2026-10-07. The previous implementation
 is preserved in the verified remote archive, and the fresh dependency baseline
 is pinned. Local library/test/demo builds, semantic proofs, native and
 interpreter arithmetic tests, and widget insertion/replay checks passed.
@@ -541,9 +666,72 @@ all seven fold relations, and real finite-choice legality. Separate examples,
 axiom audits, and the full local validation script passed, including native
 and interpreter execution and widget replay. See [the Phase 1 audit](docs/phase-1.md)
 for the exceptional-case review and remaining solver/provenance obligations.
-Phase 2 has not started.
+Phase 2 is complete (2026-10-08). Replayable programs now certify construction
+histories from the two seeds, rules 1, 2, and 4, unique intersections, and
+exact final-coordinate claims. The saved subdivision program proves the
+axes and quarter-point outputs; malformed references, invalid steps, wrong
+targets, forged outputs, and unsupported folds are rejected. General
+soundness and end-to-end proofs passed the axiom audit. Full local validation,
+including Hex construction execution and widget replay, passed after fixing
+the runtime interpretation boundary. See [the Phase 2 audit](docs/phase-2.md)
+for the module guide, evidence, and remaining scope. Phase 3 has not started.
 
-## 6. References
+## 6. Potential future work — interactive visual proving
+
+These are exploratory directions, not additions to the implementation phases
+or current release acceptance criteria. Prioritize the first two when
+revisiting future scope. The aim is to let visual interaction help users
+discover, state, and assemble mathematical arguments, with Lean checking
+the resulting precise claims.
+
+### Geometric claims made directly on the picture
+
+Let users select constructed objects and mark a relationship: equal segment
+lengths, perpendicular lines, collinear points, a point on a circle, or an
+angle equal to one-third of another. Translate the selection into an explicit
+Lean proposition and attempt to prove it from the construction history and
+established geometric facts.
+
+Show the exact claim and whether it is proved or remains a goal. A visual
+mark creates a claim, never an assumption justified solely by appearance.
+Preserve the proof in a form that replays without the GUI. This extends the
+interface from proving constructibility to proving properties of constructions.
+
+### Dragging a construction toward a general theorem
+
+Let users designate starting objects as variable and drag them while dependent
+objects update according to the same construction. For example, explore a
+midpoint construction, then request a theorem that it produces the midpoint
+for any two distinct input points.
+
+Use the interaction to discover a conjecture and its required hypotheses.
+Generalization must produce a symbolic statement and a proof for arbitrary
+inputs satisfying those hypotheses; checking sampled positions is not proof.
+Expose changes in validity, degeneracies, and branch choices rather than
+silently assuming the concrete construction works everywhere. This would
+provide a visual interface to the symbolic-program work described in Phase 9,
+without expanding that phase's current commitments.
+
+### Further directions to explore
+
+- **Assemble arguments visually:** select objects and established facts to
+  apply theorems such as triangle congruence. Display intermediate conclusions
+  and remaining proof obligations, with each action producing a Lean proof step.
+- **Explore loci and invariants:** move an input along a specified set, trace
+  dependent objects, and propose claims about their positions or unchanged
+  quantities. Distinguish containment in a proposed locus from equality with
+  that locus, which also requires proving that every point on it is reachable.
+- **Expose exceptional cases:** show why a construction fails or changes its
+  number of solutions during dragging. Let users split an argument into cases,
+  each with explicit hypotheses and separate proof obligations.
+- **Compare and simplify constructions:** prove that two methods produce the
+  same output under stated assumptions, or certify replacing a sequence with
+  a reusable construction that preserves its result.
+- **Replay proofs as explanations:** animate certified steps and let readers
+  select a conclusion to inspect the earlier objects, facts, and theorems on
+  which it depends.
+
+## 7. References
 
 - [Hex executable algebraic numbers and API overview](https://github.com/leanprover/hex-number-field)
 - [Hex Mathlib correspondence](https://github.com/leanprover/hex-number-field-mathlib)

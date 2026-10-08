@@ -1,6 +1,7 @@
 import LeanOrigamiTests.Runtime
 import LeanOrigami.Scalar
 import LeanOrigami.Geometry.Reflection
+import LeanOrigamiDemos.Subdivision
 
 /-!
 # Interpreter integration
@@ -30,3 +31,20 @@ open LeanOrigami in
   | some _ => throw <| IO.userError "FAIL: invalid normal accepted"
   | none => pure ()
   IO.println "PASS: public scalar arithmetic/order, normalization, reflection, and invalid-line rejection"
+
+open LeanOrigami LeanOrigamiDemos.Subdivision in
+-- This is the same saved recipe as the kernel-certified rational demo, now
+-- executed using Hex. Proof-bearing state does not make execution noncomputable.
+#eval do
+  let recipe := program Scalar
+  for (index, value) in [(5, (1/2 : Scalar)), (7, 1/4), (9, 3/4)] do
+    unless Program.accepts recipe ⟨index⟩ .x value do
+      throw <| IO.userError "FAIL: Hex construction or target certification"
+  unless !(Program.accepts recipe ⟨9⟩ .x (1/4)) do
+    throw <| IO.userError "FAIL: wrong target accepted"
+  let forged : Program Scalar :=
+    [.fold (.axiom1 ⟨0⟩ ⟨1⟩) ⟨1, 0, 0, Or.inl rfl⟩]
+  match Program.run forged with
+  | .error .incorrectOutput => pure ()
+  | _ => throw <| IO.userError "FAIL: forged Hex output accepted"
+  IO.println "PASS: Hex construction replay, all three exact targets, and forged-output rejection"
