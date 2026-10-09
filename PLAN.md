@@ -505,23 +505,88 @@ proof-dependency audit. The GUI and remaining fold solvers are later phases.
 
 ### Phase 3 — Complete primitive folding and elementary arithmetic
 
-Proceed in audited increments:
+Proceed in the following dependency order, with audits at each checkpoint.
+The phase is complete only when all checkpoints pass.
 
-1. Implement operations 3 and 5, including both quadratic branches and
-   degenerate finite cases; obtain a constructible point off the initial axis.
-2. Develop concrete reusable constructions and general lemmas for signed
-   coordinate placement, addition, subtraction, multiplication, and nonzero
-   division. Establish that a point is constructible exactly when its two
-   coordinates are constructible.
-3. Implement operation 7 and the complete operation-6 solver, with the
-   geometric/algebraic bridges, explicit guards, soundness, completeness,
-   and finite-solution bounds for all seven primitives.
+#### 3.1 — Exact real roots and branch selection
 
-**Tests and acceptance:** successful examples of each operation, multiple
-branches, no-solution and underconstrained inputs, vertical folds, repeated
-roots, and degree drops. Demonstrate arithmetic recipes and macro expansion.
-Give concrete examples exercising one, two, and three distinct axiom-6
-solutions. Each result must satisfy the original geometric relation.
+- Add an executable real-root interface over `Scalar`, using Hex's algebraic
+  polynomial solver and exact `isReal` test. Prove that returned values are
+  roots and that every real root is represented. Distinguish the zero
+  polynomial (all real numbers) from a nonzero polynomial with no real roots.
+  Remove repeated roots from the list of choices; multiplicity does not
+  create another geometric choice. Test irrational coefficients, repeated
+  roots, constant polynomials, and leading coefficients that vanish.
+- Refactor the single-result solver interface to support a finite list of
+  distinct creases. State soundness and completeness against the original
+  geometric relation over `ℝ`, including real creases not initially given
+  as algebraic coordinates. Infinite solution sets must be rejected as
+  underconstrained; an empty finite set is a different outcome.
+- Keep requests as references to existing objects and save the selected
+  exact crease in each instruction. Reference resolution checks the inputs;
+  certification checks that the selected crease is legal. Later the GUI will
+  enumerate candidates before the user chooses; no automatic search for a
+  sequence of folds is required. Never identify a saved branch solely by
+  its position in a list or by approximate coordinates.
+- Keep real interpretation in proofs, outside executable data. Audit the
+  existing field-embedding certificate interface before extending it: an
+  arbitrary field embedding cannot silently be assumed to preserve order.
+
+#### 3.2 — Quadratic folds and an off-axis point
+
+- Implement axiom 3, proving the equations describe reflection of the whole
+  input line onto the other line. Cover intersecting lines (two bisectors),
+  distinct parallel lines (one bisector), and coincident lines (infinitely
+  many creases). Include horizontal and vertical lines.
+- Implement axiom 5 using the fixed-point and point-to-line conditions.
+  Cover two solutions, tangency, no solution, and exceptional cases where
+  the source is on its target or coincides with the fixed point. Prove the
+  exact admissibility classification, rather than imposing convenient
+  extra input restrictions. Prove the finite bound of two creases.
+- Give replayable programs selecting each available branch and rejecting
+  forged selections. Construct a point off the initial axis from the two
+  permitted seed points and prove its exact coordinates. No extra seed
+  points or lines may be assumed.
+
+#### 3.3 — Reusable arithmetic constructions
+
+- Develop concrete primitive-step recipes and general correctness lemmas
+  for signed coordinate placement, addition, subtraction, multiplication,
+  and division by a nonzero value. Explain and check all degeneracies,
+  including zero and negative operands.
+- Support reuse by expanding recipes into ordinary instructions with
+  correctly shifted references. The expanded program must use the same
+  checker as a handwritten program; a recipe is not a new trusted axiom.
+- Prove that a point is constructible exactly when both coordinates are
+  constructible numbers. Inputs to arithmetic constructions must themselves
+  have construction evidence; being an algebraic scalar is insufficient.
+- Add separate, readable arithmetic and expansion examples with exact
+  conclusions, and audit the semantic theorems and executable integration.
+
+#### 3.4 — Axioms 7 and 6; complete primitive coverage
+
+- Implement axiom 7 with its linear equations, including no-solution and
+  underconstrained configurations; prove its finite bound of one crease.
+- Implement axiom 6 with a proved equivalence between the two geometric
+  reflection conditions and the solver's polynomial equations. Account for
+  vertical creases, every denominator guard, degree drops, repeated roots,
+  and source points already on their target lines. Handle degenerate
+  systems explicitly; a vanishing elimination polynomial alone does not
+  justify claiming that every crease is a solution.
+- Prove soundness, completeness, admissibility classifications, and finite
+  solution bounds for all seven primitives: respectively 1, 1, 2, 1, 2, 3,
+  and 1. Resource failure must never be reported as a geometric impossibility.
+- Give concrete examples with one, two, and three distinct axiom-6 creases,
+  checking each against the original geometric relation. Include invalid
+  and infinite-solution cases and exercise all seven operations through
+  program replay, not just standalone solvers.
+
+**Final acceptance:** all four checkpoints pass; every maintained test and
+demo is on the local validation path; key soundness, completeness, arithmetic,
+and end-to-end theorems pass a transitive axiom audit. Record the audit and
+remaining performance limits. Push the checkpoint for version control without
+adding a GitHub Actions validation requirement. Constructing every real root
+of an arbitrary cubic from its coefficients remains Phase 4.
 
 ### Phase 4 — Encode quadratics and cubics as constructions
 
@@ -651,7 +716,8 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phase 2 is complete (2026-10-08). Phases 0 and 1 completed
+Current status: Phase 3 is complete (2026-10-08). Phase 4 has not started.
+Phase 2 is complete (2026-10-08). Phases 0 and 1 completed
 on 2026-10-07. The previous implementation
 is preserved in the verified remote archive, and the fresh dependency baseline
 is pinned. Local library/test/demo builds, semantic proofs, native and
@@ -674,7 +740,25 @@ targets, forged outputs, and unsupported folds are rejected. General
 soundness and end-to-end proofs passed the axiom audit. Full local validation,
 including Hex construction execution and widget replay, passed after fixing
 the runtime interpretation boundary. See [the Phase 2 audit](docs/phase-2.md)
-for the module guide, evidence, and remaining scope. Phase 3 has not started.
+for the module guide, evidence, and remaining scope.
+
+Phase 3 complete: all seven saved-fold checks, complete real-crease discovery,
+finite-admissibility classifications, and solution bounds are implemented.
+Intersecting lines have exactly two bisectors; parallel and coincident cases
+are classified separately. Exact Hex discovery distinguishes infinite families,
+empty sets, and distinct finite choices, including degenerate and genuine
+cubic cases. Coordinate placement, point/coordinate equivalence, and arithmetic
+construction theorems are proved. Reusable recipes expand into ordinary
+programs with relocated references. Kernel-checked demos cover all seven rules,
+three axiom-6 branches, and composed signed arithmetic.
+
+`LEAN_NUM_THREADS=1 bash scripts/validate.sh` passed: the library, every test
+and demo, the older runtime suite, expanded Hex discovery/arithmetic/replay,
+and widget insertion plus standalone proof replay. Key results passed the
+transitive axiom audit using only ordinary Mathlib foundations. No proof holes,
+project axioms, or native decision proofs were introduced. See
+[the Phase 3 audit](docs/phase-3.md) for case coverage, implementation details,
+and performance limits. Validation was local; no GitHub Actions run was needed.
 
 ## 6. Potential future work — interactive visual proving
 

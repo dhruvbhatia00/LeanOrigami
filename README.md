@@ -6,8 +6,9 @@ computation and a planned proof-producing graphical interface.
 The restart follows [PLAN.md](PLAN.md) and [AGENTS.md](AGENTS.md). The library
 provides exact real algebraic coordinates, normalized lines, reflection,
 intersection, and the seven fold relations. Replayable construction programs
-now certify rules 1, 2, and 4 and unique intersections. The remaining fold
-solvers and the origami GUI are later phases.
+now certify all seven rules and unique intersections. Phase 3 is complete,
+including exact candidate discovery and arithmetic recipes. The origami GUI
+is a later phase.
 
 ## Setup
 
@@ -61,8 +62,9 @@ interfaces alongside the original Hex experiments. Both print axiom reports.
 `Runtime.lean` contains executable assertions and timing output; these tests
 are not proof certificates.
 
-`Interpreter.lean` reuses the runtime suite through `#eval` and exercises the
-public scalar and geometry operations to check that they execute inside Lean.
+`Interpreter.lean` exercises the public scalar, geometry, and construction
+operations through `#eval`. It omits the older runtime suite for focused
+development checks; full validation still runs that suite as `phase0-runtime`.
 Run it with
 `lake lean LeanOrigamiTests/Interpreter.lean`; Lake supplies the required
 native libraries. This check is also included in the validation script.
@@ -98,8 +100,8 @@ It is shared between exact scalars and the real plane. The real interpretation
 proves equality with Mathlib's reflection and perpendicularity notions.
 
 Fold relations describe a proposed crease. Legal selections additionally
-require finitely many solutions over the whole real plane. These definitions
-do not yet establish a construction history or implement a fold solver.
+require finitely many solutions over the whole real plane. These definitions alone do not establish a construction history; the
+construction and solver modules provide those additional guarantees.
 
 See [the Phase 1 audit](docs/phase-1.md) for module responsibilities,
 exceptional cases, validation status, and the remaining later-phase work.
@@ -121,8 +123,7 @@ The demo uses exact rationals with `decide +kernel` for small certificates;
 assertions are separate from proof evidence.
 
 The standard Lean data syntax is the initial text interface. The program
-format includes all seven fold requests; operations 3, 5, 6, and 7 currently
-return explicit unsupported-operation errors. Missing or wrong-kind
+format supports all seven fold requests. Missing or wrong-kind
 references, underconstrained folds, non-unique intersections, forged outputs,
 and target mismatches are rejected.
 
@@ -132,3 +133,30 @@ The construction module guide, data flow, and audit are in
 ```sh
 lake build LeanOrigamiTests.Construction LeanOrigamiDemos.Subdivision
 ```
+
+## Phase 3 modules
+
+Phase 3 passed full local validation and its [audit](docs/phase-3.md).
+The main entry points are:
+
+| Open this file | To find |
+| --- | --- |
+| `Scalar/Roots.lean` | Exact real roots of algebraic polynomials, including zero-polynomial classification. |
+| `Scalar/FoldDiscovery.lean` | `Scalar.folds`, its soundness and completeness over all real creases, and duplicate removal. |
+| `Solvers/Candidates.lean` | Candidate formulas and finite-choice guards for all seven rules. |
+| `Solvers/LineLine.lean`, `PointLine.lean`, `Perpendicular.lean`, `Cubic.lean` | The geometry and exceptional cases for rules 3, 5, 7, and 6. |
+| `Solvers/Equations.lean` | Polynomial meanings of reflection and guarded cubic elimination. |
+| `Solvers/Certified.lean` | Checking a saved crease without repeating root discovery. |
+| `Construction/Basis.lean`, `Coordinates.lean`, `Arithmetic.lean` | The coordinate basis, coordinate/point equivalence, and arithmetic construction theorems. |
+| `Construction/Recipe.lean`, `ArithmeticRecipe.lean` | Reference remapping, recipe expansion, and executable arithmetic recipes. |
+
+`Scalar.folds input` returns `none` for an infinite family, `some []` for no
+solution, and `some choices` for a finite list of distinct exact creases.
+Discovery does not choose a sequence of operations. A caller chooses one
+crease and saves it in an ordinary construction instruction.
+
+For examples, open `LeanOrigamiDemos/OffAxis.lean`, `AllFolds.lean`, or
+`Arithmetic.lean`. The arithmetic demo composes four recipes and checks the
+expanded program in Lean's kernel. `LeanOrigamiTests/Interpreter.lean`
+contains native Hex checks, including exact choice counts and irrational
+coefficients; these runtime results are not proof premises.

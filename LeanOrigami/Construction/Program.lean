@@ -55,10 +55,11 @@ inductive ConstructionError where
   | missingReference (index : Nat)
   | expectedPoint (index : Nat)
   | expectedLine (index : Nat)
-  | unsupportedFold (rule : Nat)
   | coincidentPoints
   | parallelLines
   | coincidentLines
+  | underconstrainedFold
+  | noFoldSolutions
   | incorrectOutput
   | targetMismatch
   deriving DecidableEq, Repr

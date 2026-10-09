@@ -5,7 +5,7 @@ import LeanOrigami.Solvers.Certified
 
 An append-only state stores exact objects with construction histories.
 Resolution can only retrieve earlier certified objects. Each instruction
-checks its saved output against the primitive result before extending the
+checks its saved output against the primitive relation before extending the
 state. `run` exposes ordinary data; `run_sound` states its geometric guarantee.
 Real embeddings occur only under proof quantifiers, never as runtime inputs.
 -/
@@ -42,7 +42,7 @@ def line (state : State K) (ref : LineRef) :
   | some ⟨.line l, hl⟩ => .ok ⟨l, hl⟩
   | some ⟨.point _, _⟩ => .error (.expectedLine ref.index)
 
-/-- Resolve every required input. Even unsupported folds cannot fabricate inputs. -/
+/-- Resolve every required input before checking the requested geometric relation. -/
 def resolve (state : State K) (request : FoldRequest) :
     Except ConstructionError {input : FoldInput K // ∀ f : K →+* ℝ, (input.map f).Available Constructible} := do
   match request with
@@ -106,13 +106,10 @@ def step (state : State K) (instruction : Instruction K) :
   match instruction with
   | .fold request selected =>
       let input ← resolve state request
-      let solution ← Solver.fold input.val
-      if h : selected = solution.val then
-        return ⟨.line selected, by
-          intro f
-          rw [h]
-          exact Constructible.fold _ _ (input.property f) (solution.property f)⟩
-      else throw .incorrectOutput
+      let certificate ← Solver.fold input.val selected
+      return ⟨.line selected, by
+        intro f
+        exact Constructible.fold _ _ (input.property f) (certificate.legal f)⟩
   | .intersect left right selected =>
       let l ← line state left
       let m ← line state right

@@ -1,60 +1,62 @@
-import LeanOrigami.Solvers.Basic
+import LeanOrigami.Solvers.Candidates
 import LeanOrigami.Construction.Program
 
 /-!
 # Certified primitive execution
 
-For a requested fold, compute its unique candidate and carry a proof of real
-finite-choice legality. These proofs have no runtime role. Unsupported rules
-are explicit errors until their complete solvers are implemented.
+Check a selected crease against the geometric equations and prove real
+finite-choice legality. Finding candidates is separate from replay: a program
+already contains its chosen exact crease. Certificates have no runtime role.
 -/
 
 namespace LeanOrigami
 namespace Solver
-variable {K : Type*} [Field K] [LinearOrder K] [IsStrictOrderedRing K]
+universe u
+variable {K : Type u} [Field K] [LinearOrder K] [IsStrictOrderedRing K]
 
-omit [LinearOrder K] [IsStrictOrderedRing K] in
-/-- Coordinate transport through a field embedding preserves distinct points. -/
-theorem map_point_ne (f : K →+* ℝ) {p q : Point K} (h : p ≠ q) :
-    (f p.1, f p.2) ≠ (f q.1, f q.2) := by
-  intro heq
-  exact h (Prod.ext (f.injective (congrArg Prod.fst heq))
-    (f.injective (congrArg Prod.snd heq)))
+/-- Proof-only result, in the same universe as the construction state. -/
+structure FoldCertificate (input : FoldInput K) (selected : Line K) : Type u where
+  legal : ∀ f : K →+* ℝ, (input.map f).Legal (selected.map f)
 
-/-- An exact crease together with its legality in the whole real plane. -/
-abbrev Solution (input : FoldInput K) :=
-  {crease : Line K // ∀ f : K →+* ℝ, (input.map f).Legal (crease.map f)}
-
-/-- Compute the one available result for rules 1, 2, and 4.
-No candidate list or caller assertion is used to justify admissibility. -/
-def fold (input : FoldInput K) : Except ConstructionError (Solution input) :=
-  match input with
-  | .axiom1 p q =>
-      if h : p ≠ q then
-        .ok ⟨Line.through p q h, by
-          intro f
-          refine ⟨(FoldInput.axiom1_admissible_iff _ _).mpr (map_point_ne f h), ?_⟩
-          exact ⟨(Line.contains_map f _ _).mpr (Line.through_left p q h),
-            (Line.contains_map f _ _).mpr (Line.through_right p q h)⟩⟩
-      else .error .coincidentPoints
-  | .axiom2 p q =>
-      if h : p ≠ q then
-        .ok ⟨Line.bisector p q h, by
-          intro f
-          refine ⟨(FoldInput.axiom2_admissible_iff _ _).mpr (map_point_ne f h), ?_⟩
-          change ((Line.bisector p q h).map f).reflect (f p.1, f p.2) = (f q.1, f q.2)
-          rw [Line.reflect_map, Line.bisector_reflect]⟩
-      else .error .coincidentPoints
-  | .axiom4 p l =>
-      .ok ⟨Line.perpendicularThrough p l, by
+/-- Check a saved crease without rerunning root discovery. The real embeddings
+occur only in the erased certificate, never in executable arguments. -/
+def fold (input : FoldInput K) (selected : Line K) :
+    Except ConstructionError (FoldCertificate input selected) :=
+  if hf : input.FiniteCondition then
+    if hs : input.Satisfies selected then
+      .ok ⟨by
         intro f
-        refine ⟨FoldInput.axiom4_admissible _ _, ?_⟩
-        exact ⟨(Line.contains_map f _ _).mpr (Line.perpendicularThrough_mem p l),
-          (Line.perpendicular_map f _ _).mpr (Line.perpendicularThrough_perpendicular p l)⟩⟩
-  | .axiom3 .. => .error (.unsupportedFold 3)
-  | .axiom5 .. => .error (.unsupportedFold 5)
-  | .axiom6 .. => .error (.unsupportedFold 6)
-  | .axiom7 .. => .error (.unsupportedFold 7)
+        exact ⟨(FoldInput.finiteCondition_iff _).mp
+            ((FoldInput.finiteCondition_map_iff f input).mpr hf),
+          (FoldInput.satisfies_map_iff f input selected).mpr hs⟩⟩
+    else .error (match input with
+      | .axiom5 p q _ => if p = q then .noFoldSolutions else .incorrectOutput
+      | .axiom7 _ l m =>
+          if l.perpendicularAlignmentDot m = 0 then .noFoldSolutions else .incorrectOutput
+      | _ => .incorrectOutput)
+  else .error (match input with
+    | .axiom1 .. | .axiom2 .. => .coincidentPoints
+    | _ => .underconstrainedFold)
+
+/-- Replay accepts exactly the finite, geometrically valid selected creases.
+This specification is independent of the root finder and its enumeration order. -/
+theorem fold_succeeds_iff (input : FoldInput K) (selected : Line K) :
+    (∃ certificate, fold input selected = .ok certificate) ↔
+      input.FiniteCondition ∧ input.Satisfies selected := by
+  unfold fold
+  split
+  · rename_i hf
+    split
+    · rename_i hs
+      exact ⟨fun _ => ⟨hf, hs⟩, fun _ => ⟨_, rfl⟩⟩
+    · rename_i hs
+      constructor
+      · rintro ⟨certificate, h⟩; cases h
+      · rintro ⟨_, hc⟩; exact False.elim (hs hc)
+  · rename_i hf
+    constructor
+    · rintro ⟨certificate, h⟩; cases h
+    · rintro ⟨hc, _⟩; exact False.elim (hf hc)
 
 /-- A nonzero determinant computes a point with unique-intersection evidence. -/
 def intersect (l m : Line K) :

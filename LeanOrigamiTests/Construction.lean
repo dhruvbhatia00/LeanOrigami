@@ -90,19 +90,19 @@ example : Program.run (K := ℚ)
       [.fold (.axiom4 ⟨1⟩ ⟨2⟩) ⟨1, 0, 1, Or.inl rfl⟩,
        .intersect ⟨3⟩ ⟨4⟩ (0, 0)]) = .error .parallelLines := by decide +kernel
 
--- All later primitives are representable but explicitly unsupported.
+-- Underconstrained requests remain errors even when the selected line satisfies them.
 example : Program.run (K := ℚ) ((program ℚ).take 1 ++
     [.fold (.axiom3 ⟨2⟩ ⟨2⟩) ⟨1, 0, 0, Or.inl rfl⟩]) =
-    .error (.unsupportedFold 3) := by decide +kernel
+    .error .underconstrainedFold := by decide +kernel
 example : Program.run (K := ℚ) ((program ℚ).take 1 ++
     [.fold (.axiom5 ⟨0⟩ ⟨1⟩ ⟨2⟩) ⟨1, 0, 0, Or.inl rfl⟩]) =
-    .error (.unsupportedFold 5) := by decide +kernel
+    .error .incorrectOutput := by decide +kernel
 example : Program.run (K := ℚ) ((program ℚ).take 1 ++
     [.fold (.axiom6 ⟨0⟩ ⟨1⟩ ⟨2⟩ ⟨2⟩) ⟨1, 0, 0, Or.inl rfl⟩]) =
-    .error (.unsupportedFold 6) := by decide +kernel
+    .error .underconstrainedFold := by decide +kernel
 example : Program.run (K := ℚ) ((program ℚ).take 1 ++
     [.fold (.axiom7 ⟨0⟩ ⟨2⟩ ⟨2⟩) ⟨1, 0, 0, Or.inl rfl⟩]) =
-    .error (.unsupportedFold 7) := by decide +kernel
+    .error .underconstrainedFold := by decide +kernel
 
 -- Rule 2 works for a horizontal crease and an oblique crease as well as vertical ones.
 example : (Line.bisector (0, 0) ((0, 2) : Point ℚ) (by decide)).reflect
