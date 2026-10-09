@@ -6,9 +6,8 @@ computation and a planned proof-producing graphical interface.
 The restart follows [PLAN.md](PLAN.md) and [AGENTS.md](AGENTS.md). The library
 provides exact real algebraic coordinates, normalized lines, reflection,
 intersection, and the seven fold relations. Replayable construction programs
-now certify all seven rules and unique intersections. Phase 4 is complete,
-including exact candidate discovery, arithmetic, and quadratic/cubic root
-constructions. The origami GUI is a later phase.
+now certify all seven rules and unique intersections. The library includes exact candidate discovery, arithmetic, and quadratic/cubic
+root constructions. Phase 5 adds named text commands and saved proof artifacts. The origami GUI is a later phase.
 
 ## Setup
 
@@ -45,8 +44,8 @@ lake build LeanOrigamiTests LeanOrigamiDemos
 bash scripts/validate.sh
 ```
 
-The validation script checks all three targets, runs the arithmetic and root
-experiments, exercises the pinned ProofWidgets insertion handler, and checks
+The validation script checks the library, text interface, tests, and demos, runs
+the arithmetic and root experiments, round-trips saved text proofs, exercises the pinned ProofWidgets insertion handler, and checks
 the resulting standalone Lean proof. It requires no npm installation. Checkpoints are validated locally;
 the GitHub Actions workflow is manual-only and does not run on pushes.
 
@@ -94,7 +93,8 @@ measurements, and validation status.
 
 ## Geometry modules
 
-Import `LeanOrigami` for the complete public API. Coordinate geometry can
+Import `LeanOrigami` for the mathematical and executable API. Import
+`LeanOrigami.Text` for the proof-producing text commands. Coordinate geometry can
 also be imported without Hex, for example `LeanOrigami.Geometry.Reflection`.
 It is shared between exact scalars and the real plane. The real interpretation
 proves equality with Mathlib's reflection and perpendicularity notions.
@@ -186,3 +186,32 @@ Full validation includes this command. Mathematical construction proofs and
 native integration checks are separate: no native assertion is used to close
 a Lean theorem. The trisection identification theorem connects exact polynomial,
 interval, and unit-circle conditions to the named point at angle `π/9`.
+
+## Phase 5 text interface
+
+See [the tutorial](docs/text-interface.md) for the command syntax and saving
+proofs, and [the audit](docs/phase-5.md) for validation and limitations.
+The text entry point is separate so symbolic proof files do not load Hex.
+
+| Open this file | To find |
+| --- | --- |
+| `LeanOrigami/Text/Certified.lean` | Points, lines, and numbers carrying construction evidence; checked operations and final submission. |
+| `LeanOrigami/Text/Syntax.lean` | Named `origami` commands, certificate tactics, and instruction errors. |
+| `LeanOrigami/Text/Artifact.lean` | Exact source capture, versioned JSON, saving, loading, and standalone proof export. |
+| `LeanOrigamiDemos/Text.lean` | Square root, cube doubling, iterated roots, trisection, and a reusable helper through the new interface. |
+| `LeanOrigamiTests/Text.lean` | All seven primitives, candidate-order independence, and rejected constructions. |
+| `LeanOrigamiTests/TextPersistence.lean` | File round trips and generation of a fresh replay file. |
+
+For focused validation:
+
+```sh
+lake build LeanOrigami.Text LeanOrigamiTests.Text LeanOrigamiDemos.Text
+lake env lean LeanOrigamiTests/TextPersistence.lean
+lake env lean .lake/phase5/TextReplay.lean
+```
+
+Each saved choice is an exact expression with a kernel-checked certificate.
+Routine arithmetic is automated; more difficult identities can use explicit
+`proving (by ...)` arguments. The interface does not yet automatically translate
+arbitrary native Hex outputs into symbolic certificates. The canvas remains
+Phase 6 work.

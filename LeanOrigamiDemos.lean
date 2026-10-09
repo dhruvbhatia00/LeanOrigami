@@ -5,5 +5,6 @@ import LeanOrigamiDemos.Arithmetic
 import LeanOrigamiDemos.AllFolds
 import LeanOrigamiDemos.Roots
 import LeanOrigamiDemos.RootPrograms
+import LeanOrigamiDemos.Text
 
 /-! Replayable construction proofs and the widget prototype. Build explicitly with `lake build LeanOrigamiDemos`. -/

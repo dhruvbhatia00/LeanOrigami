@@ -666,6 +666,36 @@ the public interface; round-trip saved programs; check target mismatch and
 invalid macro inputs; verify behavior is independent of candidate ordering.
 Keep demos separate from implementation modules.
 
+#### Work order and checkpoints
+
+1. **Exact saved choices and proof production.** Define a persistent artifact
+   with exact values and selected outputs. Root identity must include enough
+   information to distinguish conjugates; never rely on solver enumeration
+   order or floats. Connect each saved instruction to kernel-checked geometric
+   evidence and the selected final coordinate. Native Hex success is not a
+   proof. Establish the irrational proof path before designing the syntax.
+2. **Named text commands.** Provide names for points and lines, all seven
+   primitives, intersections, exact branch choices, arithmetic and root
+   constructions, and final-coordinate submission. Resolve names to references
+   automatically. Reusable constructions must retain input provenance and
+   validate their arguments. Keep the interface reusable by Phase 6.
+3. **Persistence and export.** Save, load, and print complete constructions
+   with their exact choices. Produce standalone Lean proof artifacts that
+   replay in a fresh session without GUI state. Preserve mathematical values
+   under a save/load round trip, even if candidate ordering changes.
+4. **Errors, demonstrations, and audit.** Report the responsible instruction
+   for missing or wrong-kind references, invalid folds, invalid recipe inputs,
+   and target mismatches. Replay square root, cube doubling, iterated roots,
+   and trisection through the public interface. Test export/reopen, round trips,
+   altered branch ordering, and intentional failures. Audit transitive axioms
+   and all maintained local validation paths before committing and pushing.
+
+Implementation choices may use symbolic certificates and explicit proof
+arguments where direct kernel reduction of Hex values is impractical. Such
+certificates must check the actual saved choices, not establish only that an
+unrelated construction of the final number exists. Document the proof and
+execution interfaces and any automation limits without weakening acceptance.
+
 ### Phase 6 — ProofWidgets construction interface
 
 Implement the goal-directed interface described above using the existing
@@ -750,8 +780,9 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phase 4 is complete (2026-10-08); see [the audit](docs/phase-4.md).
-Phase 3 is complete (2026-10-08). Phase 5 has not started.
+Current status: Phase 5 is complete (2026-10-09); see [the audit](docs/phase-5.md).
+Phase 4 is complete (2026-10-08); see [its audit](docs/phase-4.md).
+Phase 3 is complete (2026-10-08). Phase 6 has not started.
 Phase 2 is complete (2026-10-08). Phases 0 and 1 completed
 on 2026-10-07. The previous implementation
 is preserved in the verified remote archive, and the fresh dependency baseline
@@ -794,6 +825,23 @@ transitive axiom audit using only ordinary Mathlib foundations. No proof holes,
 project axioms, or native decision proofs were introduced. See
 [the Phase 3 audit](docs/phase-3.md) for case coverage, implementation details,
 and performance limits. Validation was local; no GitHub Actions run was needed.
+
+Phase 5 complete: `LeanOrigami.Text` provides named, typed construction
+commands for all seven folds, intersections, arithmetic, roots, reusable
+helpers, and final-coordinate submission. Exact selected expressions and their
+certificates persist as versioned source artifacts. Separate examples cover
+square root, cube doubling, iterated roots, and the full trisection point.
+Rejection tests cover bad references, wrong kinds, duplicate names, invalid
+folds and root inputs, division by zero, and target mismatches. Candidate
+presentation order does not change the selected exact root.
+
+Full local validation passed, including file/JSON round trips and fresh Lean
+replay of the exported proofs. Instruction and theorem axiom checks permit
+only ordinary Mathlib foundations. No dependency changes or CI run were needed.
+Difficult symbolic identities can require explicit certificates; translating
+arbitrary opaque Hex outputs automatically remains an integration concern for
+the GUI, not an established capability. See [the tutorial](docs/text-interface.md)
+and [the Phase 5 audit](docs/phase-5.md).
 
 ## 6. Potential future work — interactive visual proving
 
