@@ -7,7 +7,7 @@ The restart follows [PLAN.md](PLAN.md) and [AGENTS.md](AGENTS.md). The library
 provides exact real algebraic coordinates, normalized lines, reflection,
 intersection, and the seven fold relations. Replayable construction programs
 now certify all seven rules and unique intersections. The library includes exact candidate discovery, arithmetic, and quadratic/cubic
-root constructions. Phase 5 adds named text commands and saved proof artifacts. The origami GUI is a later phase.
+root constructions. Phase 5 adds named program assembly, acceptance certificates, and saved proof artifacts. The origami GUI is a later phase.
 
 ## Setup
 
@@ -189,29 +189,33 @@ interval, and unit-circle conditions to the named point at angle `π/9`.
 
 ## Phase 5 text interface
 
-See [the tutorial](docs/text-interface.md) for the command syntax and saving
+See [the tutorial](docs/text-interface.md) for writing programs and saving
 proofs, and [the audit](docs/phase-5.md) for validation and limitations.
 The text entry point is separate so symbolic proof files do not load Hex.
 
 | Open this file | To find |
 | --- | --- |
-| `LeanOrigami/Text/Certified.lean` | Points, lines, and numbers carrying construction evidence; checked operations and final submission. |
-| `LeanOrigami/Text/Syntax.lean` | Named `origami` commands, certificate tactics, and instruction errors. |
+| `LeanOrigami/Construction/Recipe.lean` | Named `do`-notation assembly and reuse of ordinary saved programs. |
+| `LeanOrigami/Construction/Checker.lean` | Executable checks, step certificates, and `accepts_sound`. |
+| `LeanOrigami/Text/Replay.lean` | `origami_check`, symbolic geometry certificates, and instruction errors. |
 | `LeanOrigami/Text/Artifact.lean` | Exact source capture, versioned JSON, saving, loading, and standalone proof export. |
-| `LeanOrigamiDemos/Text.lean` | Square root, cube doubling, iterated roots, trisection, and a reusable helper through the new interface. |
+| `LeanOrigamiDemos/RootPrograms.lean` | Saved square-root, cube-doubling, iterated-root, and trisection programs. |
+| `LeanOrigamiDemos/Text.lean` | Acceptance certificates and named real conclusions for those programs. |
 | `LeanOrigamiTests/Text.lean` | All seven primitives, candidate-order independence, and rejected constructions. |
+| `LeanOrigamiTests/TextScalar.lean` | One executable Hex irrational value, its acceptance proof, and real interpretation. |
 | `LeanOrigamiTests/TextPersistence.lean` | File round trips and generation of a fresh replay file. |
 
 For focused validation:
 
 ```sh
-lake build LeanOrigami.Text LeanOrigamiTests.Text LeanOrigamiDemos.Text
+lake build LeanOrigami.Text LeanOrigamiTests.Text LeanOrigamiDemos.Text LeanOrigamiTests.TextScalar
 lake env lean LeanOrigamiTests/TextPersistence.lean
 lake env lean .lake/phase5/TextReplay.lean
 ```
 
-Each saved choice is an exact expression with a kernel-checked certificate.
-Routine arithmetic is automated; more difficult identities can use explicit
-`proving (by ...)` arguments. The interface does not yet automatically translate
-arbitrary native Hex outputs into symbolic certificates. The canvas remains
-Phase 6 work.
+Building or previewing a program does not require proof generation. At
+submission, `origami_check` proves acceptance of the actual saved record;
+`accepts_sound` yields constructibility. `origami_check using ...` can supply
+algebraic facts for difficult choices. The interface does not yet automatically
+extract short symbolic certificates from arbitrary native Hex outputs.
+The canvas remains Phase 6 work.

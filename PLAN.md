@@ -666,35 +666,40 @@ the public interface; round-trip saved programs; check target mismatch and
 invalid macro inputs; verify behavior is independent of candidate ordering.
 Keep demos separate from implementation modules.
 
-#### Work order and checkpoints
+#### Shared-program repair — completed 2026-10-09
 
-1. **Exact saved choices and proof production.** Define a persistent artifact
-   with exact values and selected outputs. Root identity must include enough
-   information to distinguish conjugates; never rely on solver enumeration
-   order or floats. Connect each saved instruction to kernel-checked geometric
-   evidence and the selected final coordinate. Native Hex success is not a
-   proof. Establish the irrational proof path before designing the syntax.
-2. **Named text commands.** Provide names for points and lines, all seven
-   primitives, intersections, exact branch choices, arithmetic and root
-   constructions, and final-coordinate submission. Resolve names to references
-   automatically. Reusable constructions must retain input provenance and
-   validate their arguments. Keep the interface reusable by Phase 6.
-3. **Persistence and export.** Save, load, and print complete constructions
-   with their exact choices. Produce standalone Lean proof artifacts that
-   replay in a fresh session without GUI state. Preserve mathematical values
-   under a save/load round trip, even if candidate ordering changes.
-4. **Errors, demonstrations, and audit.** Report the responsible instruction
-   for missing or wrong-kind references, invalid folds, invalid recipe inputs,
-   and target mismatches. Replay square root, cube doubling, iterated roots,
-   and trisection through the public interface. Test export/reopen, round trips,
-   altered branch ordering, and intentional failures. Audit transitive axioms
-   and all maintained local validation paths before committing and pushing.
+The first Phase 5 implementation was incorrectly marked complete. Its text
+commands built proof-bearing real objects directly instead of the existing
+`Program`. Successful example proofs and source export did not establish the
+promised common backend. The repair below is complete; see
+[the Phase 5 audit](docs/phase-5.md) for validation and limitations.
 
-Implementation choices may use symbolic certificates and explicit proof
-arguments where direct kernel reduction of Hex values is impractical. Such
-certificates must check the actual saved choices, not establish only that an
-unrelated construction of the final number exists. Document the proof and
-execution interfaces and any automation limits without weakening acceptance.
+1. **Prove acceptance without wholesale reduction.** Keep `Program`, its
+   executable checker, and `accepts_sound`. Establish a small theorem interface
+   for proving the checker's actual steps from algebraic certificates. Test an
+   irrational saved program before committing to the frontend design. Native
+   computations may provide immediate feedback without generating proofs.
+2. **One construction record.** Use ordinary Lean `do` notation with the
+   existing `RecipeBuilder` for named construction instructions and references.
+   Remove the duplicate bespoke command parser as well as its proof objects. Reuse existing recipe expansion for arithmetic
+   and roots. Remove the separate proof-bearing `Text.Point/Line/Number` path;
+   do not preserve it behind new wrappers. Proof generation happens separately
+   on the actual saved program and checks every step, including unused steps.
+3. **Exact identity and submission.** Certificates must concern the exact saved
+   choices and final target. Show how symbolic algebraic proofs relate to the
+   executable scalar representation; no unrelated constructibility theorem or
+   native success flag can substitute for acceptance of the saved program.
+4. **Examples, persistence, and audit.** Migrate the square-root, cube-doubling,
+   iterated-root, and trisection examples; retain all seven primitive commands,
+   reusable constructions, error locations, exact branch identity, and fresh
+   export/replay. Test malformed references, bad unused steps, wrong selections,
+   invalid recipe arguments, target mismatch, and candidate-order independence.
+   Run local validation and transitive axiom checks before marking complete.
+
+Keep this repair small: prefer refactoring existing abstractions, remove the
+superseded implementation and stale documentation, and record the source-size
+change at the audit. Shared programs and proof certificates are distinct:
+editing and immediate feedback must not require building kernel proofs.
 
 ### Phase 6 — ProofWidgets construction interface
 
@@ -780,7 +785,8 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phase 5 is complete (2026-10-09); see [the audit](docs/phase-5.md).
+Current status: Phase 5 is complete (2026-10-09), including the shared-program
+repair; see [the audit](docs/phase-5.md).
 Phase 4 is complete (2026-10-08); see [its audit](docs/phase-4.md).
 Phase 3 is complete (2026-10-08). Phase 6 has not started.
 Phase 2 is complete (2026-10-08). Phases 0 and 1 completed
@@ -826,22 +832,14 @@ project axioms, or native decision proofs were introduced. See
 [the Phase 3 audit](docs/phase-3.md) for case coverage, implementation details,
 and performance limits. Validation was local; no GitHub Actions run was needed.
 
-Phase 5 complete: `LeanOrigami.Text` provides named, typed construction
-commands for all seven folds, intersections, arithmetic, roots, reusable
-helpers, and final-coordinate submission. Exact selected expressions and their
-certificates persist as versioned source artifacts. Separate examples cover
-square root, cube doubling, iterated roots, and the full trisection point.
-Rejection tests cover bad references, wrong kinds, duplicate names, invalid
-folds and root inputs, division by zero, and target mismatches. Candidate
-presentation order does not change the selected exact root.
-
-Full local validation passed, including file/JSON round trips and fresh Lean
-replay of the exported proofs. Instruction and theorem axiom checks permit
-only ordinary Mathlib foundations. No dependency changes or CI run were needed.
-Difficult symbolic identities can require explicit certificates; translating
-arbitrary opaque Hex outputs automatically remains an integration concern for
-the GUI, not an established capability. See [the tutorial](docs/text-interface.md)
-and [the Phase 5 audit](docs/phase-5.md).
+Phase 5 repair complete: ordinary `RecipeBuilder` programs now serve text
+assembly, native replay, and kernel-checked submission. `origami_check` proves
+acceptance of the actual saved record; the duplicate proof-object interface
+was removed. All four substantial root examples, a concrete Hex candidate,
+rejection locations, candidate-order independence, and fresh artifact replay
+passed local validation and transitive axiom checks. Production library source
+shrunk by 82 lines. Automatic certificate extraction from arbitrary opaque Hex
+values remains a limitation, not a completed feature. Phase 6 has not started.
 
 ## 6. Potential future work — interactive visual proving
 

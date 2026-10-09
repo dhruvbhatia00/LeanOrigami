@@ -1,5 +1,6 @@
 import LeanOrigami.Scalar.Roots
 import LeanOrigamiDemos.RootPrograms
+import LeanOrigamiTests.TextScalar
 
 /-!
 # Native replay of irrational root constructions
@@ -26,6 +27,10 @@ private def replay (label : String) (program : Program Scalar × PointRef) (targ
 
 /-- Execute the complete saved constructions from the two seed points. -/
 def run : IO Unit := do
+  let certified := LeanOrigamiTests.TextScalar.squareRoot
+  let some certifiedProgram := squareRootTwo Scalar certified
+    | throw <| IO.userError "FAIL: certified Hex root recipe rejected"
+  replay "same Hex value as the kernel certificate" certifiedProgram certified
   let squareRoots ← roots [-2, 0, 1]
   let some square := squareRoots.find? (fun x => decide (0 < x))
     | throw <| IO.userError "FAIL: positive square root missing"

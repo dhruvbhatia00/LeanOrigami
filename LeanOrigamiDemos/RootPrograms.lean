@@ -20,51 +20,68 @@ def basis : RootRecipe.BasisArguments := ⟨⟨0⟩, ⟨1⟩, ⟨2⟩, ⟨3⟩, 
 private def arithmetic (first second : PointRef) : Fin 7 → Nat :=
   (ArithmeticRecipe.Arguments.mk ⟨0⟩ ⟨1⟩ ⟨2⟩ ⟨3⟩ ⟨8⟩ first second).indices
 
+-- A builder keeps the next free reference separately from the growing program.
+-- This also keeps symbolic replay from repeatedly expanding earlier prefixes.
+private def finish (body : RecipeBuilder K PointRef) : Program K × PointRef :=
+  let recipe := RecipeBuilder.build 2 body
+  (recipe.steps, recipe.output)
+
+private def twoBuilder : RecipeBuilder K PointRef := do
+  let _ ← RecipeBuilder.use (⟨Basis.program K true, ⟨8⟩⟩ : Recipe K 2) (fun i => i.val)
+  RecipeBuilder.use (ArithmeticRecipe.add 1 1) (arithmetic ⟨1⟩ ⟨1⟩)
+
 /-- Construct the coefficient two. -/
-def two : Program K × PointRef :=
-  (ArithmeticRecipe.add 1 1).append (Basis.program K true) (arithmetic ⟨1⟩ ⟨1⟩)
+def two : Program K × PointRef := finish K (twoBuilder K)
 
 /-- Replayable nonnegative square root of two, if the candidate passes its guard. -/
 def squareRootTwo (t : K) : Option (Program K × PointRef) := do
   let recipe ← RootRecipe.squareRoot 2 t
-  return recipe.append (two K).1 (basis.indices ![(two K).2])
+  return finish K do
+    let coefficient ← twoBuilder K
+    RecipeBuilder.use recipe (basis.indices ![coefficient])
 
 /-- The coefficient minus two is constructed before the cubic fold. -/
-def cubeRootTwo (t : K) : Program K × PointRef :=
-  let neg := (ArithmeticRecipe.sub 0 2).append (two K).1 (arithmetic ⟨0⟩ (two K).2)
-  (RootRecipe.monicCubic 0 0 (-2) t).append neg.1
-    (basis.indices ![⟨0⟩, ⟨0⟩, neg.2])
+def cubeRootTwo (t : K) : Program K × PointRef := finish K do
+  let coefficient ← twoBuilder K
+  let negative ← RecipeBuilder.use (ArithmeticRecipe.sub 0 2) (arithmetic ⟨0⟩ coefficient)
+  RecipeBuilder.use (RootRecipe.monicCubic 0 0 (-2) t)
+    (basis.indices ![⟨0⟩, ⟨0⟩, negative])
 
 /-- Reuse the first root's output reference as the second radicand. -/
 def fourthRootTwo (square fourth : K) : Option (Program K × PointRef) := do
-  let first ← squareRootTwo K square
-  let recipe ← RootRecipe.squareRoot square fourth
-  return recipe.append first.1 (basis.indices ![first.2])
+  let first ← RootRecipe.squareRoot 2 square
+  let second ← RootRecipe.squareRoot square fourth
+  return finish K do
+    let coefficient ← twoBuilder K
+    let root ← RecipeBuilder.use first (basis.indices ![coefficient])
+    RecipeBuilder.use second (basis.indices ![root])
+
+private def trisectionBuilder (t : K) : RecipeBuilder K PointRef := do
+  let two ← twoBuilder K
+  let four ← RecipeBuilder.use (ArithmeticRecipe.add 2 2) (arithmetic two two)
+  let six ← RecipeBuilder.use (ArithmeticRecipe.add 4 2) (arithmetic four two)
+  let eight ← RecipeBuilder.use (ArithmeticRecipe.add 4 4) (arithmetic four four)
+  let minusSix ← RecipeBuilder.use (ArithmeticRecipe.sub 0 6) (arithmetic ⟨0⟩ six)
+  let minusOne ← RecipeBuilder.use (ArithmeticRecipe.sub 0 1) (arithmetic ⟨0⟩ ⟨1⟩)
+  RecipeBuilder.use (RootRecipe.cubic 8 0 (-6) (-1) t (by norm_num))
+    (basis.indices ![eight, ⟨0⟩, minusSix, minusOne])
 
 /-- Construct the coefficients of `8*t³-6*t-1`, then select the trisection
 cosine. Branch selection and identification are checked in the separate demos. -/
-def trisectionCosine (t : K) : Program K × PointRef :=
-  let four := (ArithmeticRecipe.add 2 2).append (two K).1
-    (arithmetic (two K).2 (two K).2)
-  let six := (ArithmeticRecipe.add 4 2).append four.1 (arithmetic four.2 (two K).2)
-  let eight := (ArithmeticRecipe.add 4 4).append six.1 (arithmetic four.2 four.2)
-  let minusSix := (ArithmeticRecipe.sub 0 6).append eight.1 (arithmetic ⟨0⟩ six.2)
-  let minusOne := (ArithmeticRecipe.sub 0 1).append minusSix.1 (arithmetic ⟨0⟩ ⟨1⟩)
-  (RootRecipe.cubic 8 0 (-6) (-1) t (by norm_num)).append minusOne.1
-    (basis.indices ![eight.2, ⟨0⟩, minusSix.2, minusOne.2])
+def trisectionCosine (t : K) : Program K × PointRef := finish K (trisectionBuilder K t)
 
 /-- Finish the upper unit-circle point from the selected cosine and positive
 sine. Both coordinates are obtained by constructions before pairing them. -/
 def trisectionPoint (cosine sine : K) : Option (Program K × PointRef) := do
   if ¬((1/2 : K) < cosine ∧ cosine < 1 ∧ 0 < sine) then none else do
-    let first := trisectionCosine K cosine
-    let square := (ArithmeticRecipe.mul cosine cosine).append first.1
-      (arithmetic first.2 first.2)
-    let radicand := (ArithmeticRecipe.sub 1 (cosine*cosine)).append square.1
-      (arithmetic ⟨1⟩ square.2)
     let recipe ← RootRecipe.squareRoot (1-cosine*cosine) sine
-    let second := recipe.append radicand.1 (basis.indices ![radicand.2])
-    return (ArithmeticRecipe.pair cosine sine).append second.1
-      (arithmetic first.2 second.2)
+    return finish K do
+      let first ← trisectionBuilder K cosine
+      let square ← RecipeBuilder.use (ArithmeticRecipe.mul cosine cosine)
+        (arithmetic first first)
+      let radicand ← RecipeBuilder.use (ArithmeticRecipe.sub 1 (cosine*cosine))
+        (arithmetic ⟨1⟩ square)
+      let second ← RecipeBuilder.use recipe (basis.indices ![radicand])
+      RecipeBuilder.use (ArithmeticRecipe.pair cosine sine) (arithmetic first second)
 
 end LeanOrigamiDemos.RootPrograms

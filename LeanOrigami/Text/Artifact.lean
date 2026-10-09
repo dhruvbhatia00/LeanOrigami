@@ -1,4 +1,4 @@
-import LeanOrigami.Text.Syntax
+import LeanOrigami.Text.Replay
 import Lean.Data.Json.FromToJson
 
 /-!

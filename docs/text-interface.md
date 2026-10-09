@@ -1,91 +1,99 @@
 # Text constructions and saved proofs
 
-Import `LeanOrigami.Text`. This is a separate entry point from the native Hex
-solver: opening a symbolic proof does not require loading Hex.
+A construction has two parts: a saved `Program` and a proof that this program
+passes the checker. Building or editing the program does not construct proofs.
+A future GUI can run exact computations to preview the available choices and
+record the user's selection. At submission, Lean checks a proof about that
+same saved program.
 
-An `origami` block starts with named seed points, creates points, lines, or
-numbers, and finishes by submitting a number against the theorem's target:
+## Writing a construction
+
+Use the existing `RecipeBuilder` with ordinary Lean `do` notation. Local names
+hold point or line references; folds and intersections record exact selected
+outputs. The builder assigns indices, so callers do not count intermediate
+objects by hand.
 
 ```lean
 import LeanOrigami.Text
 open LeanOrigami
 
-example : ConstructibleNumber (Real.sqrt 2) := by
-  origami
-    point U := unit
-    number one := x U
-    number two := add one one
-    number root := sqrt two choose (Real.sqrt 2) proving (by
-      origami_values
-      constructor
-      · positivity
-      · norm_num)
-    submit root
+def midpoint : Recipe ℚ 2 := RecipeBuilder.build 2 do
+  let origin : PointRef := ⟨0⟩
+  let unit : PointRef := ⟨1⟩
+  let axis ← RecipeBuilder.fold (.axiom1 origin unit) (Line.horizontal 0)
+  let crease ← RecipeBuilder.fold (.axiom2 origin unit) (Line.chart 0 (1/2))
+  RecipeBuilder.intersect axis crease (1/2, 0)
 ```
 
-`choose` records an exact expression, never a position in a solver's result
-list. The square-root certificate checks both its equation and its sign.
-A polynomial equation alone does not identify a particular conjugate.
-Expressions such as `Real.sqrt 2`, a specified real power, and an explicitly
-characterized algebraic root remain exact when saved as Lean source.
-
-## Commands
-
-| Command after `:=` | Result and required arguments |
-| --- | --- |
-| `origin`, `unit` | Seed point `(0,0)` or `(1,0)`. |
-| `fold1 p q`, `fold2 p q` | Line, with a selected crease. |
-| `fold3 l m` | Line, with a selected bisector. |
-| `fold4 p l` | Line, perpendicular to `l` through `p`. |
-| `fold5 p q l` | Line reflecting `p` onto `l` through `q`. |
-| `fold6 p q l m` | Line reflecting `p` onto `l` and `q` onto `m`. |
-| `fold7 p l m` | Line reflecting `p` onto `l`, perpendicular to `m`. |
-| `intersect l m` | Point, with a selected intersection. |
-| `x p`, `y p` | Number selected from a constructed point. |
-| `pair a b` | Point with the two constructed coordinates. |
-| `add a b`, `sub a b`, `mul a b`, `div a b` | Number; division requires a nonzero divisor. |
-| `sqrt a` | Selected nonnegative square root. |
-| `quadratic a b c` | Selected root of `a*t²+b*t+c`; `a ≠ 0`. |
-| `cubic a b c d` | Selected root of `a*t³+b*t²+c*t+d`; `a ≠ 0`. |
-| `use (expression)` | Invoke a reusable construction returning the declared object kind. |
-
-Use `point name`, `line name`, or `number name` before `:=` as appropriate.
-Folds, intersections, and roots require `choose (exactExpression)`.
-They accept an optional `proving (by ...)` certificate; division accepts an
-optional certificate for its nonzero divisor. With no explicit certificate,
-`origami_check` tries symbolic simplification and elementary arithmetic.
-Names refer only to existing objects, cannot be redeclared, and retain their
-point/line/number types. Errors point to the responsible instruction. Every
-instruction is checked, including instructions whose outputs are unused.
-Unfinished certificates and dependencies on unapproved axioms are rejected.
-
-For example:
+Certify and submit it separately:
 
 ```lean
-line axis := fold1 O U choose (LeanOrigami.Line.horizontal 0)
-line vertical := fold4 O axis choose (LeanOrigami.Line.chart 0 0)
+theorem midpoint_accepts :
+    Program.accepts midpoint.steps midpoint.output .x (1/2) = true := by
+  origami_check
+
+theorem midpoint_constructible : ConstructibleNumber (1/2 : ℝ) := by
+  simpa using Program.accepts_sound (Rat.castHom ℝ) _ _ .x _ midpoint_accepts
 ```
 
-A chart line has equation `x + b*y = c`; `horizontal c` has equation `y = c`.
-All selected folds must be finite-choice requests. Merely exhibiting a line
-satisfying an underconstrained rule is insufficient.
+`midpoint.steps` is the ordinary program, and `midpoint.output` is its result
+reference. Its two argument slots are the two seeds when replayed on their own.
+For reuse inside a larger construction, `RecipeBuilder.use recipe arguments`
+expands the recipe and relocates its references. Arithmetic and root recipes
+use exactly this mechanism; they do not introduce additional trusted rules.
 
-`submit n` proves the current `ConstructibleNumber target` goal after checking
-`n.value = target`. An explicit `proving` certificate can identify a target
-through a nontrivial equality. `finish n` instead returns a certified object,
-for use when defining a reusable construction:
+`RecipeBuilder.fold` accepts all seven `FoldRequest` constructors, each taking
+the appropriate point and line references. `RecipeBuilder.intersect` takes
+two line references. A chart line has equation `x + b*y = c`, while
+`Line.horizontal c` has equation `y = c`.
 
-```lean
-def twice (a : LeanOrigami.Text.Number) : LeanOrigami.Text.Number := by
-  origami
-    number result := add a a
-    finish result
-```
+Typed references catch ordinary point/line mix-ups while writing Lean. A manually
+forged reference can still name an absent object or the wrong object kind;
+the checker rejects those cases. Normal Lean scope and binding rules apply.
 
-Call it with `number two := use (twice one)`. A helper's value lemmas or its
-definition may need to be supplied to `simp` in subsequent certificates.
-`origami_values` unfolds the standard operations and local saved values;
-it does not automatically unfold every user-defined helper.
+## Previewing and certifying
+
+`Program.run` computes the objects or an error. `Program.accepts` also checks
+the submitted reference, coordinate, and exact target. Over `Scalar`, these
+operations use Hex's executable algebraic numbers. Previewing need not generate
+proofs and does not become evidence merely because it returned `true`.
+
+`origami_check` proves an actual `Program.accepts ... = true` goal. It resolves
+the saved references, checks every instruction (including unused ones), and
+proves each geometric condition using the checker's step lemmas. It then checks
+the final target. `Program.accepts_sound` converts this acceptance proof into
+constructibility under a field embedding into the reals.
+
+The tactic performs structural computation for references and uses algebraic
+proofs for coordinates. It does not ask the kernel to execute Hex's entire
+algorithm. `origami_check using ...` supplies a tactic for the geometric goals
+and target equality when elementary arithmetic is insufficient. These proofs
+must concern the exact saved choices; proving that some root exists is not
+enough. Failures identify the primitive instruction or final submission.
+Error messages number instructions from one; object references still start at zero.
+
+`LeanOrigamiDemos/Text.lean` demonstrates symbolic root certificates over any
+ordered field. `LeanOrigamiTests/TextScalar.lean` instantiates one at a concrete,
+executable Hex square root and proves its interpretation is `Real.sqrt 2`.
+`LeanOrigamiTests/RootInterpreter.lean` executes that same candidate and program.
+
+This is not automatic discovery of a construction, nor automatic extraction of
+a short certificate from every opaque Hex value. Difficult choices can require
+explicit algebraic facts. All generated proof terms are checked by Lean's kernel.
+
+## Choices and reusable roots
+
+Saved choices are exact values, not positions in a solver's candidate list.
+Reordering candidates therefore does not change a construction that selects
+the same value. Algebraic root equations may need sign or interval information
+to identify the intended root.
+
+`RootRecipe.quadratic` rejects candidates that fail the original quadratic
+(including an extraneous zero root of its cubic encoding).
+`RootRecipe.squareRoot` checks both the equation and the nonnegative branch.
+These constructors return `Option`; handle failure before using a recipe.
+Division and nonmonic root recipes require nonzero leading coefficients.
+Expanded primitive steps still undergo ordinary replay.
 
 ## Saving and reopening
 
@@ -95,37 +103,15 @@ After closing namespaces and sections, capture a checked, closed theorem:
 origami_artifact MyNamespace.myTheorem as savedConstruction
 ```
 
-The resulting `LeanOrigami.Text.Artifact` contains a format version, the
-fully qualified theorem name, and the exact source prefix preceding this
-command. The prefix retains imports, notation, helper definitions, and all
-chosen expressions and certificates. It may include other preceding proofs;
-this is deliberately a source artifact, not a minimal dependency extractor.
+The artifact stores a format version, theorem name, and exact source prefix.
+That prefix includes the saved programs, selected expressions, helper recipes,
+acceptance proofs, and final theorem. It preserves source context rather than
+extracting a minimal dependency bundle; imports require the pinned project.
 
-- `artifact.encode` and `Artifact.decode` serialize and deserialize JSON.
+- `artifact.encode` and `Artifact.decode` handle JSON.
 - `artifact.save path` and `Artifact.load path` handle files.
-- `artifact.writeLean path` writes a replayable `.lean` file and appends a
-  check of its named theorem and transitive axioms.
+- `artifact.writeLean path` writes source for fresh kernel-checked replay.
 
-Loading JSON handles data only. Run Lean on the emitted source to verify the
-proof. This is also how the validation script tests reopening: it writes an
-artifact, reads it back, compares the exact source, and checks the emitted
-file in a fresh Lean process. No GUI session or native success flag is needed.
-
-## Proof and execution paths
-
-The text commands use `Text.Point`, `Text.Line`, and `Text.Number`. These
-carry exact real values and geometric construction histories. Each primitive
-checks its actual selected output. Arithmetic and root commands apply the
-proved construction algorithms to the supplied input histories.
-
-The existing `Program Scalar` and `Scalar.folds` APIs remain the executable
-path for numerical exploration and candidate discovery. A native solver can
-suggest a value, but the saved text proof needs an exact expression and checked
-certificate for that choice. This interface does not automatically translate
-an arbitrary opaque Hex value into a short symbolic proof. Difficult algebraic
-identities may require explicit proof arguments. Neither native execution nor
-JSON decoding is used as evidence for a theorem.
-
-Open `LeanOrigamiDemos/Text.lean` for square root, cube doubling, an iterated
-root, a reusable construction, and the complete trisection point. Open
-`LeanOrigamiTests/Text.lean` for all seven primitives and rejection examples.
+Loading JSON is data handling, not proof checking. Run Lean on the emitted file
+to verify the result. The validation script round-trips exact source and checks
+the exported theorem and its transitive axioms in a fresh Lean process.

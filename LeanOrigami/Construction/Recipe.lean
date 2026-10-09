@@ -116,7 +116,7 @@ def use {arity : Nat} (recipe : Recipe K arity) (arguments : Fin arity → Nat) 
     RecipeBuilder K PointRef := do
   let state : State K ← get
   let steps := recipe.expand arguments state.next
-  set ({next := state.next + steps.length, reversed := steps.reverse ++ state.reversed} : State K)
+  set ({next := state.next + recipe.steps.length, reversed := steps.reverse ++ state.reversed} : State K)
   return recipe.result arguments state.next
 
 /-- Finish assembly, reserving the initial local indices for arguments. -/

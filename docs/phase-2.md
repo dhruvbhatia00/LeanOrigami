@@ -3,6 +3,10 @@
 Status: complete (2026-10-08). All Phase 2 acceptance criteria passed the
 mathematical, code, proof-dependency, and local execution audits.
 
+This records the Phase 2 checkpoint. Phase 3 subsequently completed all seven
+folds. The [Phase 5 repair](phase-5.md) later separated plain execution state
+from its soundness proof; the proof-bearing state described below is historical.
+
 ## What this phase adds
 
 A saved program starts with exactly `(0,0)` and `(1,0)`. Each instruction

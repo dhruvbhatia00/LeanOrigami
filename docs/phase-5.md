@@ -1,86 +1,75 @@
-# Phase 5 audit: named constructions and saved proofs
+# Phase 5 audit
 
-## Scope and implementation
+Status: complete (2026-10-09). The original completion claim was withdrawn
+because its text commands bypassed `Program`. This repair uses
+one saved program throughout assembly, executable feedback, and certification.
 
-The public entry point is `LeanOrigami.Text`. The mathematical library remains
-independent of the text elaborator, and importing the text interface does not
-load Hex. No dependency or toolchain versions changed.
+## Implementation and mathematical checks
 
-- `Text/Certified.lean` carries exact real values together with the existing
-  geometric construction evidence. Its seven fold operations require both
-  the chosen crease's geometric relation and finite-choice admissibility.
-  Intersections require incidence on both lines and a nonzero determinant.
-- `Text/Syntax.lean` provides named, typed instructions, exact `choose` values,
-  optional `proving` certificates, reusable helpers, and final submission.
-  Each instruction is checked even if its output is never used. Names cannot
-  shadow earlier bindings; failures carry their instruction number.
-- `Text/Artifact.lean` preserves exact source with its prerequisite imports,
-  definitions, and certificates. Its versioned JSON round-trips this source;
-  reopening writes a standalone Lean file and rechecks the named theorem and
-  its transitive axiom dependencies. JSON decoding itself proves nothing.
+- `RecipeBuilder` supplies ordinary named Lean `do` notation for all seven
+  folds, intersections, and reusable arithmetic/root recipes. The old
+  `Text/Certified.lean` and `Text/Syntax.lean` implementations were removed.
+- The checker stores plain exact objects. Its geometric rules, reference-kind
+  checks, finite-choice conditions, and final equality check are unchanged.
+  Soundness is proved separately by induction over the same execution.
+- Four certificate lemmas expose actual checker steps, execution composition,
+  and submission. `origami_check` uses them to prove `Program.accepts = true`,
+  then `accepts_sound` establishes constructibility. Every instruction is
+  checked, including unused instructions. No separate construction history
+  replaces acceptance of the saved record.
+- Structural normalization leaves scalar values and geometry untouched. This
+  avoids both whole-program Hex reduction and repeated expansion of nested
+  recipe states. Geometry is proved symbolically; generated terms still pass
+  through Lean's kernel. Custom certificates may supply root equations and
+  branch facts.
+- `RootPrograms.lean` uses the existing builder for efficient reference
+  assignment. Its public saved-program API remains the same. The square-root,
+  cube-doubling, nested-root, and full trisection programs have generic
+  acceptance certificates. The trisection certificate covers both coordinates.
+- `TextScalar.lean` connects a concrete executable Hex square root, its real
+  interpretation, the saved scalar program, and the final constructibility
+  theorem. Native replay tests the same value separately.
+- Artifacts preserve exact source and selected expressions, including the
+  acceptance proofs. Loading JSON is not certification; a fresh Lean process
+  checks the exported source and its theorem's transitive axiom dependencies.
 
-Arithmetic and root commands reuse the construction algorithms proved in
-Phases 3 and 4. They check the actual input histories and chosen roots, rather
-than supplying an unrelated theorem about the final target. Square roots
-include a nonnegative sign condition. Quadratic and cubic commands require a
-nonzero leading coefficient; the lower-degree operations remain distinct.
+## Validation
 
-## Acceptance evidence
+The generic root certificates and real conclusions have passed LSP diagnostics
+and targeted builds. Their transitive axiom dependencies are only `propext`,
+`Classical.choice`, and `Quot.sound`. The all-seven-axiom example passes both
+symbolic certification and kernel evaluation of the rational checker.
 
-Phase 5 passed local validation on 2026-10-09:
+Rejection tests cover missing/forward references, wrong object kinds, wrong
+folds and intersections, underconstrained folds, unused invalid steps, wrong
+final targets, negative square-root choices, extraneous quadratic roots, and
+zero divisors/leading coefficients. They check rejection locations without
+leaving failed declarations in the environment. Candidate-list reordering
+preserves the exact selected construction. A separate regression checks that
+certifying a goal leaves unrelated goals alone.
 
-- Completed LSP diagnostics for the implementation, primitive tests, examples,
-  and persistence test, with no new errors or warnings.
-- `lake build LeanOrigami.Text LeanOrigamiDemos.Text` and the focused
-  `LeanOrigamiTests.Text` build passed.
-- `LEAN_NUM_THREADS=1 bash scripts/validate.sh` exited successfully. This
-  includes every maintained library/test/demo target, compiled runtime and
-  Hex interpreter checks, widget insertion/replay, artifact file/JSON round
-  trips, and fresh replay of `.lake/phase5/TextReplay.lean`.
-- The exported square-root, cube-root, iterated-root, and trisection proofs
-  reported only `propext`, `Classical.choice`, and `Quot.sound` dependencies.
-  The primitive and reordered-choice examples passed the same audit.
-- Source and diff checks found no proof holes, new project axioms, native
-  decision proofs, unrelated edits, or dependency changes. Existing pinned
-  dependency warnings and Node's VM-module notice remain.
+The concrete Hex acceptance and submission theorems have also passed LSP
+checks and the transitive axiom audit with only the same standard foundations.
+`LEAN_NUM_THREADS=1 bash scripts/validate.sh` completed successfully locally.
+It checked all library/test/demo targets, native arithmetic and root replay
+(including the certified Hex candidate), widget smoke and fresh replay, artifact
+round trips, and fresh text-proof replay. The exported source rechecked all
+four root certificates and their named conclusions with only the standard
+Mathlib axioms. No project warnings, proof holes, project axioms, or native
+decision proofs were introduced. The pinned dependencies retain their existing
+warnings. The final diff and maintained-source build paths were reviewed; no
+dependency versions changed and no GitHub Actions validation was requested.
 
-The maintained acceptance paths are:
+## Size and limitations
 
-| Criterion | Evidence |
-| --- | --- |
-| All seven primitives, typed names, intersections | `LeanOrigamiTests/Text.lean`: `all_rules`. |
-| Exact branch identity independent of enumeration | The quadratic test selects the same exact root from both candidate orders and checks equality of resulting values. No command stores a candidate index. |
-| Reusable construction and substantial Phase 4 examples | `LeanOrigamiDemos/Text.lean`: doubling helper, √2, ∛2, √√2, and the complete trisection point. |
-| Invalid references, wrong kinds, duplicate names | Separate negative examples in `LeanOrigamiTests/Text.lean`. |
-| Invalid folds, macro inputs, and targets | Negative examples cover a crease missing its inputs, an underconstrained fold, zero division, a negative square-root choice, zero quadratic leading coefficient, and wrong final coordinate. |
-| Persistence and fresh replay | `LeanOrigamiTests/TextPersistence.lean` writes, loads, compares, and exports the artifact; `scripts/validate.sh` checks the emitted source in a new Lean process. |
-| Kernel trust | Per-instruction checks, artifact declaration checks, and printed transitive axiom reports. Only `propext`, `Classical.choice`, and `Quot.sound` are permitted. |
+Relative to the original Phase 5 checkpoint, production Lean library source
+shrinks from 4,811 to 4,729 lines (82 fewer). Including demos and tests, Lean
+source grows from 6,750 to 6,778 lines (28 more). This replaces the previous
+interface rather than retaining it alongside the shared-program path.
 
-The standalone export includes the example proofs themselves, not an import
-of the text demo module. Its imports supply the mathematical prerequisites.
-This tests reconstruction of the saved instructions without an editor or GUI.
-The artifact is a complete source prefix, not a minimal dependency extraction.
-
-## Findings and limits
-
-The rejection tests exposed name shadowing and Lean's recovery from failed
-nested certificates. The elaborator now checks the active goal's local
-context and rejects unfinished evidence at each instruction. It restores
-failed elaboration state before reporting the error, so callers can catch a
-failed construction without leaving placeholder proofs behind.
-
-The exact symbolic proof path and executable Hex path have different jobs.
-`Program Scalar` and `Scalar.folds` still perform native exploration and
-candidate discovery. The new interface checks exact expressions and supplied
-certificates. Routine arithmetic is automated; difficult identities may need
-explicit proofs. There is no general automatic conversion of an arbitrary
-opaque Hex output into a short symbolic certificate. That remains an
-integration concern for the GUI; it must not be hidden by trusting native
-success flags.
-
-The candidate-order test uses a small exact integer candidate list to vary
-presentation order. It tests the text boundary, not Hex's enumeration
-implementation, which was covered by the earlier discovery checks.
-
-No GUI canvas, float rendering, or new mathematical characterization theorem
-is included in this phase. Phase 6 has not started.
+Proof generation is not construction search and does not automatically extract
+a compact certificate from every opaque Hex result. Exact algebraic identities
+and branch facts can require explicit proofs. Large examples still take time
+to elaborate and kernel-check. Source artifacts preserve the source prefix and
+rely on imports from the pinned project; they are not self-contained bundles
+of all dependencies. The graphical construction editor remains Phase 6 work.
