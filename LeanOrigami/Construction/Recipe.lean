@@ -110,6 +110,15 @@ def intersect (l m : LineRef) (selected : Point K) : RecipeBuilder K PointRef :=
   set ({next := state.next+1, reversed := .intersect l m selected :: state.reversed} : State K)
   return ⟨state.next⟩
 
+/-- Expand an existing recipe inside a larger recipe. Intermediate references
+are relocated to the builder's next slot, just as when appending to a program. -/
+def use {arity : Nat} (recipe : Recipe K arity) (arguments : Fin arity → Nat) :
+    RecipeBuilder K PointRef := do
+  let state : State K ← get
+  let steps := recipe.expand arguments state.next
+  set ({next := state.next + steps.length, reversed := steps.reverse ++ state.reversed} : State K)
+  return recipe.result arguments state.next
+
 /-- Finish assembly, reserving the initial local indices for arguments. -/
 def build (arity : Nat) (body : RecipeBuilder K PointRef) : Recipe K arity :=
   let (output, state) := body.run ⟨arity, []⟩

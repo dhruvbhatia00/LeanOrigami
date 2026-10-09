@@ -595,7 +595,36 @@ and of every real root of a cubic with constructible coefficients and
 nonzero leading coefficient. Use Phase 3 arithmetic to construct the input
 configurations; do not assume those inputs are available for free.
 
-A preferred starting candidate for a monic cubic
+#### Work order and checkpoints
+
+Phase 3 established closure under field operations. This phase extends that
+closure to every real root of a quadratic or cubic with constructible
+coefficients. Results must compose: a root may be used in arithmetic and then
+as a coefficient in another root construction. Hex root computation alone
+never supplies construction evidence.
+
+1. **Polynomial encoding and geometry.** Audit the proposed axiom-6
+   configuration below, prove its polynomial correspondence, and prove finite
+   admissibility, including zero coefficients and coincident source points.
+   Keep these identities independent of Hex and the user interface.
+2. **Construction provenance and closure.** Construct every input from the
+   coefficient histories, extract the selected root using legal operations,
+   and prove closure for all real roots. Normalize nonmonic cubics only with
+   a nonzero leading coefficient. Derive quadratic and nonnegative square-root
+   closure, with separate linear and constant cases. Reusing the cubic
+   construction for a quadratic multiplied by the variable is permitted:
+   prove the correspondence and identify the selected root explicitly.
+3. **Executable constructions.** Supply reusable recipes expanding into the
+   existing fold/intersection language. Saved root choices are checked against
+   their coefficients; they are never supplied as initial constructed points.
+   Include a composed construction using a previously constructed root.
+4. **Examples and audit.** Prove the exact examples below, including branch
+   identification for trisection. Cover repeated roots, three real roots,
+   zero roots/coefficients, and invalid choices. Validate all maintained local
+   targets and audit transitive axioms of closure and demo theorems. Record
+   remaining limitations and push the checkpoint for version control.
+
+The implemented and Lean-verified configuration for a monic cubic
 `p(t) = t^3 + a*t^2 + b*t + c` is:
 
 - `P₁ = (0,1)`, target `L₁: y = -1`;
@@ -603,12 +632,11 @@ A preferred starting candidate for a monic cubic
 
 The first alignment excludes vertical creases and forces a crease
 `F: y = t*x - t^2`. The horizontal displacement of `reflect F P₂` from
-`L₂` is `2*p(t)/(1+t^2)`. Formalize this calculation and its converse, the
+`L₂` is `2*p(t)/(1+t^2)`. Prove the equivalent polynomial alignment equations in both directions, the
 configuration's constructibility, finite admissibility, and extraction of
 the root from the crease. The unknown root is not an input assumed already
-constructible. This candidate is not yet Lean-verified; audit all cases,
-including coincident input points, before adopting it as the final theorem.
-Lill's method is a reference alternative if it gives a better specification.
+constructible. The implementation covers coincident source points and the
+horizontal crease at a zero root; no alternative encoding was needed.
 
 Normalize a general cubic using the leading coefficient. State and prove
 the theorem for every real root, not just existence of one selected root.
@@ -619,6 +647,12 @@ trisection of a 60-degree angle with a proved angle/branch characterization,
 and cubics with zero coefficients and repeated or three distinct real roots.
 All demonstrations conclude the claimed value or geometric property, not
 merely that some polynomial vanishes.
+
+**Completion:** all four checkpoints passed. The generic closure theorems,
+coefficient-building recipes, exact-value and trisection proofs, rational kernel
+replay, irrational Hex replay, and existing widget checks are validated locally.
+The [Phase 4 audit](docs/phase-4.md) records coverage and the distinction between
+native integration checks and kernel-checked proof evidence.
 
 ### Phase 5 — Stable text interface and proof artifacts
 
@@ -716,7 +750,8 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phase 3 is complete (2026-10-08). Phase 4 has not started.
+Current status: Phase 4 is complete (2026-10-08); see [the audit](docs/phase-4.md).
+Phase 3 is complete (2026-10-08). Phase 5 has not started.
 Phase 2 is complete (2026-10-08). Phases 0 and 1 completed
 on 2026-10-07. The previous implementation
 is preserved in the verified remote archive, and the fresh dependency baseline

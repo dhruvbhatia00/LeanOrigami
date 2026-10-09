@@ -7,6 +7,7 @@ lake build LeanOrigami LeanOrigamiTests LeanOrigamiDemos phase0-runtime
 mkdir -p .lake/phase0
 lake exe phase0-runtime
 lake lean LeanOrigamiTests/Interpreter.lean
+lake lean LeanOrigamiTests/RootInterpreter.lean
 lake env lean --run LeanOrigamiDemos/WidgetHarness.lean > .lake/phase0/widget-edit.json
 node --experimental-vm-modules scripts/widget-smoke.mjs
 lake env lean .lake/phase0/WidgetReplay.lean

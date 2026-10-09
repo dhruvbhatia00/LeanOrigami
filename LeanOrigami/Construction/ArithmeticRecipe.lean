@@ -112,4 +112,11 @@ def place (p : Point K) (coordinate : Coordinate) : Recipe K 5 := RecipeBuilder.
       let vertical ← RecipeBuilder.fold (.axiom4 sameCoordinates ⟨3⟩) (Line.chart 0 p.2)
       RecipeBuilder.intersect vertical ⟨3⟩ (p.2, 0)
 
+/-- Combine two constructed axis coordinates into a point. The seven arguments
+are the same basis and two operands as for binary arithmetic. -/
+def pair (x y : K) : Recipe K 7 := RecipeBuilder.build 7 do
+  let diagonal ← diagonal
+  let horizontalY ← level ⟨6⟩ y diagonal
+  atHeight ⟨5⟩ x y horizontalY
+
 end LeanOrigami.ArithmeticRecipe

@@ -6,9 +6,9 @@ computation and a planned proof-producing graphical interface.
 The restart follows [PLAN.md](PLAN.md) and [AGENTS.md](AGENTS.md). The library
 provides exact real algebraic coordinates, normalized lines, reflection,
 intersection, and the seven fold relations. Replayable construction programs
-now certify all seven rules and unique intersections. Phase 3 is complete,
-including exact candidate discovery and arithmetic recipes. The origami GUI
-is a later phase.
+now certify all seven rules and unique intersections. Phase 4 is complete,
+including exact candidate discovery, arithmetic, and quadratic/cubic root
+constructions. The origami GUI is a later phase.
 
 ## Setup
 
@@ -160,3 +160,29 @@ For examples, open `LeanOrigamiDemos/OffAxis.lean`, `AllFolds.lean`, or
 expanded program in Lean's kernel. `LeanOrigamiTests/Interpreter.lean`
 contains native Hex checks, including exact choice counts and irrational
 coefficients; these runtime results are not proof premises.
+
+## Phase 4 modules
+
+Phase 4 passed local validation and its [audit](docs/phase-4.md).
+
+Root constructions extend the field operations: every real root of a quadratic
+or cubic with constructible coefficients is constructible. A root can become
+a coefficient of another construction. Being a Hex scalar alone still gives
+no construction evidence.
+
+| Open this file | To find |
+| --- | --- |
+| `Construction/RootGeometry.lean` | The coefficient configuration, its exact cubic equivalence in both directions, and finite admissibility. |
+| `Construction/Roots.lean` | Coefficient provenance, root extraction, cubic/quadratic/linear closure, and nonnegative square roots. |
+| `Construction/RootRecipe.lean` | Executable recipes using coefficient references and a selected exact root. |
+| `LeanOrigamiDemos/Roots.lean` | Kernel-checked square-root, cube-doubling, iterated-root, and 60-degree trisection theorems. |
+| `LeanOrigamiDemos/RootPrograms.lean` | Saved programs for those examples, including both coordinates of the trisection point. |
+| `LeanOrigamiTests/RootConstructions.lean` | Kernel replay, nonmonic and repeated roots, branch guards, and degenerate cases. |
+| `LeanOrigamiTests/RootInterpreter.lean` | Native Hex replay of the irrational programs; assertions are not proof premises. |
+
+Run the focused native integration checks with
+`lake lean LeanOrigamiTests/RootInterpreter.lean`.
+Full validation includes this command. Mathematical construction proofs and
+native integration checks are separate: no native assertion is used to close
+a Lean theorem. The trisection identification theorem connects exact polynomial,
+interval, and unit-circle conditions to the named point at angle `π/9`.
