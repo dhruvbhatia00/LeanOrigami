@@ -9,5 +9,6 @@ import LeanOrigamiTests.Discovery
 import LeanOrigamiTests.RootConstructions
 import LeanOrigamiTests.Text
 import LeanOrigamiTests.TextScalar
+import LeanOrigamiTests.ExactExport
 
 /-! Separate scalar, geometry, and construction proof examples. -/

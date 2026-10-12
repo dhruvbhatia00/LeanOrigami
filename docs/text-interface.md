@@ -77,9 +77,54 @@ ordered field. `LeanOrigamiTests/TextScalar.lean` instantiates one at a concrete
 executable Hex square root and proves its interpretation is `Real.sqrt 2`.
 `LeanOrigamiTests/RootInterpreter.lean` executes that same candidate and program.
 
-This is not automatic discovery of a construction, nor automatic extraction of
-a short certificate from every opaque Hex value. Difficult choices can require
-explicit algebraic facts. All generated proof terms are checked by Lean's kernel.
+For computed solver outputs, import `LeanOrigami.Text.Exact` and call
+`LeanOrigami.Text.exportExact program point coordinate target`. It returns
+`IO (Except String Artifact)`. In an `IO` block, save a successful result:
+
+```lean
+match ← exportExact program point coordinate target with
+| .ok artifact => artifact.writeLean "Saved.lean"
+| .error message => throw (IO.userError message)
+```
+
+Then run `lake lean Saved.lean`. Export success alone is not certification.
+
+The exporter first records how the selected coordinates are calculated, using
+the existing candidate and intersection formulas. It records arithmetic, not
+proofs, and does not repeat root search. New root parameters become atoms;
+other coordinates are expressions in those atoms. An editor can retain this
+log incrementally with `ArithmeticLog.step` and supply it using the optional
+`recording` argument. A saved ordinary program also works without a log: export
+reconstructs the arithmetic by replaying its selected steps.
+
+Certificate preparation joins fields only where steps need roots together.
+For example, independent square-root and cube-root constructions keep separate
+fields. A later fold involving both joins their fields. Only root parameters
+need coordinate recovery; subsequent coordinates are calculated in rational
+polynomial arithmetic. Export compares every reconstructed coordinate exactly
+with its source scalar, including when the caller supplied the recording.
+A missing or inconsistent expression produces an error.
+
+The artifact saves defining integer polynomials, checked isolations of their
+selected real roots, and rational polynomial coordinates. It remains an
+ordinary `Program Scalar`, with the same references and exact chosen outputs.
+A field generator is only a coordinate representation: it is not an additional
+origami seed and is not assumed constructible. The recording is not needed to
+reopen the proof.
+
+At replay, `origami_check` proves acceptance. `origami_coordinates` transports
+geometric equations through proved field embeddings to rational polynomial
+calculations. The generated tactic selects the appropriate saved field. It
+rejects incomplete transport instead of evaluating Hex canonicalization in the
+kernel. Irreducibility, root isolation, and the geometric equations are all
+kernel-checked. Root discovery, arithmetic logging, and coordinate preparation
+are untrusted executable work outside the proof.
+
+This automates certification of a supplied construction, not discovery of the
+construction itself. Joining genuinely interacting high-degree fields can
+still be expensive. Identifying the exported exact target with an external
+expression such as `Real.sqrt 2` remains a separate mathematical statement.
+The symbolic examples demonstrate that connection with Mathlib.
 
 ## Choices and reusable roots
 

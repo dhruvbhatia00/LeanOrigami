@@ -701,12 +701,68 @@ superseded implementation and stale documentation, and record the source-size
 change at the audit. Shared programs and proof certificates are distinct:
 editing and immediate feedback must not require building kernel proofs.
 
+#### Solver-output certificates — implementation complete; expanded regression deferred
+
+The shared-program repair did not automate submission of arbitrary values
+returned by the executable solver. Its Hex square-root example supplied
+handwritten facts. Phase 6 remains gated on removing that gap.
+
+1. **Certificate representation and performance repair.** Load compiled Hex
+   code through a small precompiled project library. Record arithmetic
+   relationships while replaying or recording a selected step, reusing existing
+   candidate and intersection formulas. Keep exact scalar values alongside
+   this untrusted arithmetic DAG. Introduce atoms only for new selected root
+   parameters; do not recover every coordinate independently from a primitive
+   element. Partition certificate fields by connected arithmetic dependencies,
+   so unrelated constructions can retain separate fields. Use Hex's existing
+   checked root isolations and reduced polynomial arithmetic; do not modify
+   Hex sources or dependency versions. Prototype on the mixed square/cube-root
+   construction before replacing the old exporter. No second construction
+   language, proof requirement during editing, or unchecked success is allowed.
+2. **Automatic submission.** Reconstruct executable scalars from checked
+   isolation data. Transport scalar equations to rational polynomial arithmetic
+   through a proved field embedding. Integrate with `origami_check` and
+   `accepts_sound`, checking every saved instruction and the selected target.
+   Root discovery and common-field search must not be replayed by the kernel.
+3. **Export and identity.** Provide one export path from actual solver-selected
+   programs, checking exact equality of reconstructed values at export. Save
+   complete certificate data, not list positions or approximations. Recompile
+   exported proofs in a fresh Lean process without the discovery session.
+4. **Tests and audit.** Cover rational, quadratic, cubic, and iterated roots
+   with algebraic coefficients, branch changes, invalid choices, and tampered
+   certificate data. Measure discovery separately from kernel checking. Audit
+   transitive axioms, source size, public API, and documentation. Remove
+   experiments and avoid keeping redundant submission paths.
+
+Implementation checkpoint (2026-10-12): compiled loading, arithmetic recording,
+and dependency-based field preparation are implemented. The 184-step independent
+root construction and its 185-step connected variant both replayed in a fresh
+Lean process with only the standard axioms. Production modules compile and the
+old all-coordinate recovery has been replaced. The expanded test file also
+passes complete LSP diagnostics without errors or warnings. On 2026-10-12 the user approved
+moving forward on compilation and the focused end-to-end evidence, without
+waiting for the expanded 12-case export/replay run. That run remains on the
+validation path; it is deferred, not reported as passing. Final comparative
+export timings have not been collected. Phase 6 may proceed on this explicitly
+reduced validation scope; named real-goal matching remains part of Phase 6.
+
+Acceptance requires end-to-end exported solver examples with no handwritten
+root identities or per-example proof tactics. Resource limits and unsupported
+inputs must produce explicit failure, never an unchecked success. Record any
+remaining limitation before deciding whether Phase 6 can start.
+
 ### Phase 6 — ProofWidgets construction interface
 
 Implement the goal-directed interface described above using the existing
 program and solver APIs. Add numerical rendering, branch previews, object
 inspection, undo, pan/zoom, and persistent proof submission. Expose precise
 failure explanations without exposing irrelevant backend details.
+
+Integrate goal matching before source insertion: the generated theorem must
+have the original goal's target, or supply a kernel-checked equality to it.
+Native equality during export is not a proof of equality to an arbitrary Lean
+real expression. Reuse interpretation and uniqueness theorems for named real
+targets; an unsupported target or failed match must leave the goal open.
 
 **Tests and acceptance:** perform the rational, square-root, and cube-root
 demos through the widget; verify the trisection example is inspectable.

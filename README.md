@@ -199,6 +199,11 @@ The text entry point is separate so symbolic proof files do not load Hex.
 | `LeanOrigami/Construction/Checker.lean` | Executable checks, step certificates, and `accepts_sound`. |
 | `LeanOrigami/Text/Replay.lean` | `origami_check`, symbolic geometry certificates, and instruction errors. |
 | `LeanOrigami/Text/Artifact.lean` | Exact source capture, versioned JSON, saving, loading, and standalone proof export. |
+| `LeanOrigami/Scalar/Presentation.lean` | Checked real-root presentations and their executable field embedding into scalars. |
+| `LeanOrigami/Text/Recording.lean` | Arithmetic provenance recorded with the existing geometric formulas. |
+| `LeanOrigami/Text/Coordinates.lean` | Root dependency groups and reduced-coordinate certificate preparation. |
+| `LeanOrigami/Text/Exact.lean` | Automatic export and coordinate certificates for solver-selected scalar programs. |
+| `LeanOrigamiTests/ExactExport.lean` | Solver discovery, exact export, and generation of fresh automatic proof tests. |
 | `LeanOrigamiDemos/RootPrograms.lean` | Saved square-root, cube-doubling, iterated-root, and trisection programs. |
 | `LeanOrigamiDemos/Text.lean` | Acceptance certificates and named real conclusions for those programs. |
 | `LeanOrigamiTests/Text.lean` | All seven primitives, candidate-order independence, and rejected constructions. |
@@ -216,6 +221,21 @@ lake env lean .lake/phase5/TextReplay.lean
 Building or previewing a program does not require proof generation. At
 submission, `origami_check` proves acceptance of the actual saved record;
 `accepts_sound` yields constructibility. `origami_check using ...` can supply
-algebraic facts for difficult choices. The interface does not yet automatically
-extract short symbolic certificates from arbitrary native Hex outputs.
+algebraic facts for symbolic choices. For native Hex outputs,
+`LeanOrigami.Text.exportExact` (import `LeanOrigami.Text.Exact`) records coordinate arithmetic and
+builds a saved program with automatic certificates in real number fields.
+Independent roots retain separate fields until a step needs them together. Compile the
+returned artifact to certify it; export alone is untrusted computation.
+
+To exercise exact export and its independently replayed proofs:
+
+```sh
+lake build LeanOrigami.Text.Exact
+lake lean LeanOrigamiTests/ExactExport.lean -- --run LeanOrigamiTests/ExactExport.lean
+lake lean .lake/exact/Replay.lean
+```
+
+Field joining can still be expensive when a construction connects many roots.
+`LeanOrigamiNative` loads the compiled Hex backend through Lake; no manual
+shared-library list is needed.
 The canvas remains Phase 6 work.

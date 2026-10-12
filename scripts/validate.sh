@@ -15,3 +15,7 @@ lake env lean .lake/phase0/WidgetReplay.lean
 # Round-trip exact text artifacts and check the saved proof in a fresh process.
 lake env lean LeanOrigamiTests/TextPersistence.lean
 lake env lean .lake/phase5/TextReplay.lean
+
+# Discover exact branches, export their field certificates, and replay independently.
+lake lean LeanOrigamiTests/ExactExport.lean -- --run LeanOrigamiTests/ExactExport.lean
+lake lean .lake/exact/Replay.lean

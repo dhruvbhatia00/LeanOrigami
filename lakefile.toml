@@ -24,6 +24,10 @@ git = "https://github.com/leanprover-community/batteries"
 rev = "33131f4fb10067cb3009bf4db615d9680c1ccd6b"
 
 [[lean_lib]]
+name = "LeanOrigamiNative"
+precompileModules = true
+
+[[lean_lib]]
 name = "LeanOrigami"
 
 [[lean_lib]]
