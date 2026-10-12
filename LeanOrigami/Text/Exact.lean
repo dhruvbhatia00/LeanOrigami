@@ -28,7 +28,8 @@ private def decideCoordinates : Lean.Elab.Tactic.TacticM Unit := do
 number field. Every Boolean calculation here is checked by the Lean kernel. -/
 elab "origami_coordinates " s:term : tactic => Lean.Elab.Tactic.focus do
   Lean.Elab.Tactic.evalTactic (← `(tactic|
-  (let : Field ($s).Coordinates := Hex.PolyQuot.field _ _
+  (let : Hex.ZPoly.CheckedIrreducible ($s).polynomial := ($s).checked
+   let : Field ($s).Coordinates := Hex.PolyQuot.field _ _
    try rw [FoldInput.axiom3_iff_two_points]
    try simp only [FoldInput.FiniteCondition, FoldInput.Satisfies,
      FoldInput.axiom6FreeDirection, FoldInput.axiom6Polynomial, Univariate.Cubic.IsZero,
@@ -39,6 +40,7 @@ elab "origami_coordinates " s:term : tactic => Lean.Elab.Tactic.focus do
    all_goals try simp (disch := run_tac decideCoordinates) only
      [ite_true, ite_false, ite_eq_left, ite_eq_right, Scalar.Presentation.scalar_eq_hom,
      ← map_zero ($s).hom, ← map_one ($s).hom, ← map_ofNat ($s).hom,
+     ← map_ratCast ($s).hom,
      ← map_add, ← map_sub, ← map_mul, ← map_div₀, ← map_neg, ← map_inv₀, ← map_pow,
      RingHom.injective ($s).hom |>.eq_iff])))
   Lean.Elab.Tactic.evalTactic (← `(tactic| all_goals run_tac decideCoordinates))
@@ -48,15 +50,23 @@ private def fieldName (i : Nat) : String := if i == 0 then "field" else s!"field
 private def fieldSource (field : Scalar.Presentation) : String :=
   let rep := field.isolation
   s!"⟨{repr field.polynomial}, ⟨by decide +kernel, by decide +kernel⟩, " ++
-    s!"⟨⟨{Display.square rep.1.square}, {Display.certificate rep.1.witness}⟩, by decide +kernel⟩, by decide +kernel⟩"
+    s!"⟨⟨{(Display.square rep.1.square).replace ": Dyadic" ": _root_.Dyadic"}, {(Display.certificate rep.1.witness).replace ": Dyadic" ": _root_.Dyadic"}⟩, by decide +kernel⟩, by decide +kernel⟩"
 
-private def artifact (table : CoordinateTable) (program : Program Scalar)
-    (point : PointRef) (coordinate : Coordinate) (target : Scalar) : Except String Artifact := do
+/-- Serialized exact data shared by standalone files and local proof expressions. -/
+structure CertificateSource where
+  fields : List (String × String)
+  program : String
+  target : String
+  acceptance : String
+  conclusion : String
+
+private def certificate (table : CoordinateTable) (program : Program Scalar)
+    (point : PointRef) (coordinate : Coordinate) (target : Scalar) : Except String CertificateSource := do
   let scalar (a : Scalar) : Except String String := do
     let some (_, saved) := table.entries.find? (fun entry => decide (entry.1 = a))
       | throw "missing saved coordinate"
     match saved with
-    | .rational q => return s!"(({q.num} : Scalar) / {q.den})"
+    | .rational q => return s!"(({q.num} : LeanOrigami.Scalar) / {q.den})"
     | .coordinate i coeffs =>
       return s!"({fieldName i}.scalar (Hex.PolyQuot.reduce _ _ ({repr coeffs})))"
   let mut steps : List String := []
@@ -71,32 +81,60 @@ private def artifact (table : CoordinateTable) (program : Program Scalar)
       steps := s!".fold ({repr request}) ({line})" :: steps
     | .intersect l r p =>
       steps := s!".intersect ⟨{l.index}⟩ ⟨{r.index}⟩ ({← scalar p.1}, {← scalar p.2})" :: steps
-  let declarations := table.fields.toList.zipIdx |>.map fun (field, i) =>
-    s!"def {fieldName i} : Scalar.Presentation := {fieldSource field}\n\n"
-  let tactics := (List.range table.fields.size).map fun i =>
-    s!"origami_coordinates {fieldName i}"
-  let proof := "first | " ++ String.intercalate " | " tactics
+  let fields := table.fields.toList.zipIdx |>.map fun (field, i) =>
+    (fieldName i, fieldSource field)
   let coordinateSource := match coordinate with | .x => ".x" | .y => ".y"
-  let source := "import LeanOrigami.Text.Exact\n\nopen LeanOrigami LeanOrigami.Text Hex\n" ++
+  return {
+    fields
+    program := "[\n  " ++ String.intercalate ",\n  " steps.reverse ++ "]"
+    target := ← scalar target
+    acceptance := s!"LeanOrigami.Program.accepts program ⟨{point.index}⟩ {coordinateSource} target = true"
+    conclusion := s!"LeanOrigami.Program.accepts_sound LeanOrigami.Scalar.realHom program ⟨{point.index}⟩ {coordinateSource} target accepted"
+  }
+
+/-- The certificate's arithmetic tactic, shared by acceptance and target matching. -/
+def CertificateSource.arithmetic (source : CertificateSource) : String :=
+  "first | " ++ String.intercalate " | " (source.fields.map fun (name, _) =>
+    s!"origami_coordinates {name}")
+
+/-- Ordinary standalone Lean source, independent of any editing session. -/
+def CertificateSource.artifact (source : CertificateSource) : Artifact :=
+  let declarations := source.fields.map fun (name, value) =>
+    s!"def {name} : Scalar.Presentation := {value}\n\n"
+  let text := "import LeanOrigami.Text.Exact\n\nopen LeanOrigami LeanOrigami.Text Hex\n" ++
     "namespace SavedOrigami\nset_option maxRecDepth 8192\nset_option maxHeartbeats 4000000\nset_option exponentiation.threshold 8192\n\n" ++
     String.join declarations ++
-    "def program : Program Scalar := [\n  " ++ String.intercalate ",\n  " steps.reverse ++ "]\n\n" ++
-    s!"def target : Scalar := {← scalar target}\n\n" ++
-    s!"theorem accepted : Program.accepts program ⟨{point.index}⟩ {coordinateSource} target = true := by\n" ++
-    s!"  unfold program target\n  origami_check using {proof}\n\n" ++
+    s!"def program : Program Scalar := {source.program}\n\n" ++
+    s!"def target : Scalar := {source.target}\n\n" ++
+    s!"theorem accepted : {source.acceptance} := by\n" ++
+    s!"  unfold program target\n  origami_check using {source.arithmetic}\n\n" ++
     "theorem submitted : ConstructibleNumber (Scalar.toReal target) :=\n" ++
-    s!"  Program.accepts_sound Scalar.realHom program ⟨{point.index}⟩ {coordinateSource} target accepted\n\n" ++
+    s!"  {source.conclusion}\n\n" ++
     "#print axioms accepted\n#print axioms submitted\nend SavedOrigami\n"
-  return ⟨1, "SavedOrigami.submitted", source⟩
+  ⟨1, "SavedOrigami.submitted", text⟩
+
+/-- A local proof body with the same exact data as a standalone artifact.
+The caller supplies a final goal-matching tactic, which Lean must check. -/
+def CertificateSource.proof (source : CertificateSource) (finish : String) : String :=
+  let declarations := source.fields.map fun (name, value) =>
+    s!"  let {name} : LeanOrigami.Scalar.Presentation := {value}\n"
+  "set_option maxRecDepth 8192 in\nset_option maxHeartbeats 4000000 in\n" ++
+    "set_option exponentiation.threshold 8192 in\nopen LeanOrigami LeanOrigami.Text Hex in\nby\n" ++ String.join declarations ++
+    s!"  let program : LeanOrigami.Program LeanOrigami.Scalar := {source.program}\n" ++
+    s!"  let target : LeanOrigami.Scalar := {source.target}\n" ++
+    s!"  have accepted : {source.acceptance} := by\n" ++
+    s!"    dsimp only [program, target]\n    origami_check using {source.arithmetic}\n" ++
+    s!"  have constructed := {source.conclusion}\n" ++
+    "  " ++ finish.replace "\n" "\n  " ++ "\n"
 
 /-- Prepare a standalone certificate for actual exact choices. A caller that
 records steps while editing can supply that arithmetic log; otherwise export
 records the saved steps first. Native success is not certification: compile
 and kernel-check the returned artifact. Every reconstructed coordinate must
 match its saved exact scalar, even when a caller supplies an untrusted log. -/
-def exportExact (program : Program Scalar) (point : PointRef)
+def prepareExact (program : Program Scalar) (point : PointRef)
     (coordinate : Coordinate) (target : Scalar) (recording : Option ArithmeticLog := none) :
-    IO (Except String Artifact) := do
+    IO (Except String CertificateSource) := do
   unless Program.accepts program point coordinate target do
     return .error "the saved program does not accept the selected target"
   try
@@ -105,7 +143,13 @@ def exportExact (program : Program Scalar) (point : PointRef)
       | none => ArithmeticLog.ofProgram program
     return do
       let table ← CoordinateTable.prepare log program target
-      artifact table program point coordinate target
+      certificate table program point coordinate target
   catch error => return .error error.toString
+
+/-- Export the shared exact certificate as a standalone Lean artifact. -/
+def exportExact (program : Program Scalar) (point : PointRef)
+    (coordinate : Coordinate) (target : Scalar) (recording : Option ArithmeticLog := none) :
+    IO (Except String Artifact) := do
+  return (← prepareExact program point coordinate target recording).map CertificateSource.artifact
 
 end LeanOrigami.Text

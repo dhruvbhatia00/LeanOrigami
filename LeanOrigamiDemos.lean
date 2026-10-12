@@ -1,3 +1,4 @@
+import LeanOrigamiDemos.Visual
 import LeanOrigamiDemos.Widget
 import LeanOrigamiDemos.Subdivision
 import LeanOrigamiDemos.OffAxis

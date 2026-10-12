@@ -753,23 +753,167 @@ remaining limitation before deciding whether Phase 6 can start.
 
 ### Phase 6 — ProofWidgets construction interface
 
-Implement the goal-directed interface described above using the existing
-program and solver APIs. Add numerical rendering, branch previews, object
-inspection, undo, pan/zoom, and persistent proof submission. Expose precise
-failure explanations without exposing irrelevant backend details.
+**Status:** started 2026-10-12. Build the visual proof-construction experience
+using the existing `Program`, solver, checker, and certificate exporter. Do not
+introduce another construction language or reimplement geometric formulas.
+The Phase 5 expanded export regression and precise timing comparison remain
+deferred by the user's decision; do not describe them as passing.
 
-Integrate goal matching before source insertion: the generated theorem must
-have the original goal's target, or supply a kernel-checked equality to it.
-Native equality during export is not a proof of equality to an arbitrary Lean
-real expression. Reuse interpretation and uniqueness theorems for named real
-targets; an unsupported target or failed match must leave the goal open.
+Progress: the exact session and all seven operations pass focused runtime
+checks. The panel, RPC, and named-target proof support are implemented; the
+JavaScript interaction checks and Lean integration examples pass. The saved
+half, square-root, and cube-root proofs now pass fresh replay, with only
+ordinary foundational axioms. Interface regressions pass for local target
+names, unsupported targets, and failed proof checks. Live infoview validation
+remains blocked by the locked Mac. Phase 6 is not yet complete; see
+[`docs/phase-6.md`](docs/phase-6.md) for the evidence and remaining checks.
 
-**Tests and acceptance:** perform the rational, square-root, and cube-root
-demos through the widget; verify the trisection example is inspectable.
-Reopen exported proofs without widget state. Check close branches, vertical
-lines, zoom changes, undo during pending computation, stale source edits,
-and a deliberately incorrect final target. Document repeatable manual GUI
-checks alongside automated backend and integration tests.
+#### 6.1 Exact editing session and display data
+
+Add an immutable session containing the current program, its exact objects,
+and any pending fold choices. Object references retain their existing meaning:
+indices in the common append-only object list, with point/line input roles
+checked by the ordinary resolver. The initial scene contains `(0, 0)` and
+`(1, 0)`. Only permitted operations may add objects; clicking empty canvas
+must not introduce arbitrary coordinates.
+
+Each fold operation uses this sequence:
+
+1. Choose one of the seven axioms.
+2. Select its required points and lines in clearly labelled input roles.
+3. Run executable discovery on those exact inputs. Report no solution or
+   infinitely many solutions explicitly; never invent a finite choice list.
+4. Preview all available finite crease choices. Keep their exact backend
+   identities even when their screen images nearly overlap.
+5. Choose a crease and append the exact selected instruction to the program.
+
+Intersection selects two existing lines and appends their exact intersection;
+parallel or coincident lines are rejected. Previewing is not committing.
+Undo removes the latest committed instruction and invalidates pending choices.
+The session API should support the same actions in separate automated tests.
+
+Immediate feedback uses executable computation, without constructing proof
+expressions at every click. The final kernel check remains responsible for
+certifying the saved program. Retain arithmetic provenance when useful through
+the existing exporter/recorder API, without creating a second proof system.
+
+Rendering uses refined Hex approximations, separately from exact objects.
+Send point coordinates and implicit line coefficients with approximation error
+information. Clip `a*x + b*y = c` to the viewport, including vertical lines;
+do not rely on slope conversion. Adjust requested precision with zoom and
+provide further refinement for close branches. Never turn a screen float into
+proof evidence or use proximity as branch identity. If display resolution is
+insufficient, offer exact-identity selection and explain the limitation.
+
+**Focused checks:** initial state, valid fold/intersection, wrong input kind,
+missing reference, degenerate inputs, branch selection, and undo. Check that
+precision changes preserve exact selected objects and program contents.
+
+#### 6.2 Persistent proof expression and original-goal matching
+
+Extend the existing certificate serialization to produce a local proof usable
+inside an ordinary Lean theorem. Reuse the saved field presentations, exact
+program serialization, `origami_check`, and `Program.accepts_sound`; do not
+maintain a separate widget-specific exporter with duplicated formulas.
+
+The user starts from a `ConstructibleNumber` goal. A tactic opens the panel
+and displays that goal. Selecting a final point and its x or y coordinate
+supplies the exact scalar to certify. Submission must establish both:
+
+- the complete saved program constructs that coordinate;
+- its real interpretation equals the original goal's target.
+
+For example, constructing an algebraic root of `X^2 - 2` does not alone close
+a goal about `Real.sqrt 2`: the proof must identify the nonnegative root.
+Support rational goals, square-root goals, and cube-root goals using exact
+identities and the appropriate uniqueness/branch facts. Handle the forms
+used by the project demos, and document the supported target expressions.
+An unsupported expression or incorrect final coordinate leaves the goal open
+with an explanation. Native equality and approximate agreement are not
+substitutes for this proof.
+
+Elaborate and kernel-check the proposed proof against the original goal before
+offering source insertion. Reject unresolved metavariables, proof holes, and
+unapproved axiom dependencies. The inserted text must contain everything
+needed to replay the proof after closing the widget and restarting Lean.
+No session identifier or hidden mutable widget state may be needed for replay.
+
+**Focused checks:** rational submission, named square-root and cube-root
+identification, incorrect target, unsupported target, and fresh-file replay.
+Audit transitive axioms on representative submitted theorems.
+
+#### 6.3 Snapshot-bound RPC and editor integration
+
+Keep mathematical code independent of ProofWidgets. RPCs connect the exact
+editing session and certificate preparation to the panel. Bind requests to
+immutable session snapshots and the source document/goal that opened them.
+Do not allow a candidate index from one preview to select a different preview's
+crease. Handle errors and resource limits as failures, not successful proofs.
+
+Run expensive discovery/submission asynchronously and show a busy state.
+Discard replies made stale by undo, changed inputs, a newer request, or a
+changed goal/document. Undo must remain usable while a computation is pending.
+Use versioned source edits so stale submission cannot overwrite unrelated
+changes. A checked proof for an earlier goal cannot silently replace the
+current goal's tactic.
+
+**Focused checks:** stale preview reply, undo during computation, stale source
+version, failed proof check, and versioned insertion. Keep simulated editor
+checks clearly distinguished from testing in the live Lean infoview.
+
+#### 6.4 Drawing panel and complete rational loop
+
+Build a collapsible ProofWidgets panel with:
+
+- the target and an SVG construction view with labels;
+- point/line selection both on the drawing and through an object list;
+- clear input roles for every axiom and for intersections;
+- distinguishable candidate previews and an explicit commit action;
+- object inspection, construction history, and undo;
+- pan, zoom, reset-view, and precision refinement;
+- final point/coordinate selection, Submit, and checked proof insertion;
+- concise explanations of unavailable operations and failed submissions.
+
+Keep implementation details such as polynomial-coordinate encodings out of
+the normal construction flow. Exact object references remain available for
+inspection and selection when several rendered objects overlap.
+
+The first integrated milestone is a complete rational example: open a goal,
+perform its construction visually, submit, insert the checked proof, and
+reopen it without widget state. Finish this loop before extending the visual
+demos to irrational constructions.
+
+#### 6.5 Irrational demos, validation, and audit
+
+Exercise rational, square-root, and cube-root constructions through the widget.
+Verify that the trisection construction and its distinct branches are
+inspectable. Prefer small examples that teach the interface; avoid adding a
+large new catalogue of text recipes solely for validation. Existing recipes
+may supply reproducible fixtures, but must not replace evidence that the
+interactive operations work.
+
+Check close branches, vertical lines, zoom changes, invalid intersections,
+undo during pending computation, stale source edits, and an incorrect final
+target. Save representative generated proofs and check them independently of
+the GUI session. Put backend tests, UI integration checks, and demos in separate
+files on documented validation paths. Use local validation and manual-only CI;
+push checkpoints for preservation, not to trigger redundant remote builds.
+
+Document the exact steps for repeatable manual checks in the Lean infoview,
+the supported goal forms, and known responsiveness/rendering limits. Record
+which checks actually ran; a JavaScript editor harness is not a live visual
+check. Audit names, module boundaries, source size, duplicated serialization,
+mathematical statements, and transitive proof dependencies. Remove prototypes
+superseded by the finished interface when they no longer serve a separate test.
+
+**Phase acceptance:** all seven fold operations and intersections are usable
+from the panel; the rational, square-root, and cube-root GUI-to-proof examples
+work; trisection branches can be inspected; source insertion is goal-matched,
+versioned, and independently replayable; invalid or unsupported submissions
+leave the goal open. Complete the documented relevant local checks and record
+the final audit before declaring Phase 6 complete. Any unavailable live-editor
+validation must be reported as a remaining limitation, not silently replaced
+by a weaker test or treated as completed acceptance.
 
 ### Phase 7 — Package the main theory and release
 

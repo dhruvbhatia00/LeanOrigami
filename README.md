@@ -68,17 +68,29 @@ Run it with
 `lake lean LeanOrigamiTests/Interpreter.lean`; Lake supplies the required
 native libraries. This check is also included in the validation script.
 
-## Widget prototype
+## Visual construction interface (Phase 6 in development)
 
-Open `LeanOrigamiDemos/Widget.lean` in a Lean editor and place the cursor on
-`origami_phase0` in `submission_example`. Its panel offers an insertion link
-that replaces the tactic with `rfl`. The tactic checks that proof before
-presenting it. Save and reopen the file to confirm the ordinary proof works.
+Import `LeanOrigami.Widget` and use `origami` inside a `ConstructibleNumber`
+goal. The panel supports exact fold selection, intersections, undo, pan/zoom,
+and checked proof submission. See [the widget guide](docs/widget.md) for
+step-by-step constructions and the supported named targets, and
+[the Phase 6 audit](docs/phase-6.md) for current validation status.
 
-The automated interaction harness uses the shipped ProofWidgets JavaScript
-with a minimal editor adapter; it exercises the click event, versioned edit,
-and independent replay. It does not replace a visual test inside VS Code.
-The full origami canvas is a later phase.
+`LeanOrigamiDemos/Visual.lean` provides starting goals. The earlier
+`LeanOrigamiDemos/Widget.lean` remains a small test of ProofWidgets' insertion
+boundary; it is not the construction interface.
+
+Focused local checks (after building changed imports):
+
+```sh
+lake build LeanOrigami.Widget LeanOrigamiTests.Widget LeanOrigamiDemos.Visual
+node --experimental-vm-modules scripts/widget-construction-test.mjs
+lake lean LeanOrigamiTests/WidgetRuntime.lean -- --run LeanOrigamiTests/WidgetRuntime.lean
+lake lean .lake/phase6/Saved.lean
+```
+
+The JavaScript tests use an editor adapter and do not replace visual checks
+in the Lean infoview. No npm installation is required.
 
 ## Preservation
 

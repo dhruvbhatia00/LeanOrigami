@@ -19,3 +19,8 @@ lake env lean .lake/phase5/TextReplay.lean
 # Discover exact branches, export their field certificates, and replay independently.
 lake lean LeanOrigamiTests/ExactExport.lean -- --run LeanOrigamiTests/ExactExport.lean
 lake lean .lake/exact/Replay.lean
+
+# Exercise exact widget editing, then replay named-goal proofs independently.
+node --experimental-vm-modules scripts/widget-construction-test.mjs
+lake lean LeanOrigamiTests/WidgetRuntime.lean -- --run LeanOrigamiTests/WidgetRuntime.lean
+lake lean .lake/phase6/Saved.lean
