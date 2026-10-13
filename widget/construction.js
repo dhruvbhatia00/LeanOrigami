@@ -2,7 +2,8 @@ import * as React from 'react';
 import { useRpcSession, EditorContext, mapRpcError } from '@leanprover/infoview';
 
 // All screen geometry is disposable. Only server-held exact object IDs are
-// sent back to Lean. This module has no path from a mouse position to a fold.
+// sent back to Lean for folds. Sample placement is separate: rational grid
+// values are validated by Lean and can never supply proof seeds.
 const e = React.createElement;
 const operations = [
   ['1', '1 · Through two points', ['First point', 'Second point'], ['point', 'point'], 'Make a crease through both selected points.'],
@@ -64,6 +65,31 @@ export function needsRefinement(object, viewport) {
 export function newGeneration(ref) { return ++ref.current; }
 export function isCurrent(ref, token) { return ref.current === token; }
 
+// Convert the chosen grid multiple to an exact fraction, not a float literal.
+export function snapSample(value, step) {
+  const index = Math.round(value / step);
+  if (!Number.isSafeInteger(index)) throw new Error('Pan closer to the origin to place a sample.');
+  const [mantissa, exponent] = step.toExponential(0).split('e');
+  const power = Number(exponent), scale = 10n ** BigInt(Math.abs(power));
+  const numerator = BigInt(index) * BigInt(mantissa);
+  return power >= 0 ? String(numerator * scale) : `${numerator}/${scale}`;
+}
+
+// These numbers draw an unsaved placement only. The server parses the strings
+// independently as rationals before using them as exact workspace samples.
+export function samplePreview(rows, existing) {
+  const number = text => { const [n, d = '1'] = text.split('/'); return Number(n) / Number(d); };
+  return rows.flatMap((row, index) => {
+    if (row.keep) return existing.filter(o => o.index === index);
+    let values = row.values.map(number);
+    if (row.values.some(v => !v.trim()) || !values.every(Number.isFinite)) return [];
+    if (row.kind === 'line' && values.length === 4) {
+      const [x, y, u, v] = values, a = y - v, b = u - x; values = [a, b, a * x + b * y];
+    }
+    return [{ index, kind: row.kind, values: values.map(value => ({ value: String(value), error: '0' })) }];
+  });
+}
+
 export default function ConstructionPanel(props) {
   const rpc = useRpcSession(), editor = React.useContext(EditorContext);
   const [scene, setScene] = React.useState(null), sceneRef = React.useRef(null);
@@ -75,6 +101,10 @@ export default function ConstructionPanel(props) {
   const [hover, setHover] = React.useState(null), [inspection, setInspection] = React.useState('');
   const [historyIndex, setHistoryIndex] = React.useState(null);
   const [previewValid, setPreviewValid] = React.useState(false);
+  const [editingSamples, setEditingSamples] = React.useState(false);
+  const [sampleRows, setSampleRows] = React.useState([]), [recipeName, setRecipeName] = React.useState('');
+  const [placement, setPlacement] = React.useState(null), [tentative, setTentative] = React.useState(null);
+  const sampleDrag = React.useRef(null);
   const generation = React.useRef(0), drag = React.useRef(null), canvas = React.useRef(null);
   const gateKey = JSON.stringify(props.gate);
   const recipeOperations = (props.recipes ?? []).map(r => [r.id, `Recipe · ${r.name}`,
@@ -82,14 +112,17 @@ export default function ConstructionPanel(props) {
     'Run this recipe on the selected inputs. Multiple folds will ask for a fresh choice.']);
   const availableOperations = [...operations, ...recipeOperations];
   const spec = availableOperations.find(o => o[0] === operation) ?? operations[0], box = bounds(viewport);
-  const objects = scene?.view.objects ?? [], choices = previewValid ? (scene?.view.choices ?? []) : [];
+  const storedObjects = scene?.view.objects ?? [];
+  const objects = editingSamples && (sampleRows.some(r => !r.keep) || tentative) ? samplePreview(sampleRows, storedObjects) : storedObjects;
+  const choices = previewValid ? (scene?.view.choices ?? []) : [];
   const selectedGroup = typeof historyIndex === 'string' ? scene?.view.groups?.[Number(historyIndex.slice(7))] : null;
   const historyStep = selectedGroup ? { ...selectedGroup, description: selectedGroup.name } :
     scene?.view.history?.[historyIndex] ?? null;
-  const objectLabel = index => `${objects.find(o => o.index === index)?.kind === 'point' ? 'P' : 'L'}${index}`;
+  const objectLabel = index => `${(objects.find(o => o.index === index) ?? storedObjects.find(o => o.index === index))?.kind === 'point' ? 'P' : 'L'}${index}`;
   const bits = precisionFor(viewport.width, extraBits);
   function install(result) { sceneRef.current = result; setScene(result); setHistoryIndex(null); }
   async function request(action, overrides = {}) {
+    const wasSetup = sceneRef.current?.workspace?.ready === false;
     const token = newGeneration(generation);
     setBusy(action === 'submit' ? (props.workspace ? 'Preparing recipe…' : 'Checking the complete proof…') : 'Computing…');
     setMessage(''); setSubmission(null);
@@ -97,12 +130,18 @@ export default function ConstructionPanel(props) {
       const response = await rpc.call('LeanOrigami.Widget.interact', {
         gate: props.gate, session: sceneRef.current?.session ?? null,
         action, operation, inputs: ['preview', 'intersect', 'recipe'].includes(action) ? inputs : [],
-        choice: 0, point: finalPoint, coordinate, bits, ...overrides,
+        choice: 0, point: finalPoint, coordinate, bits, recipeName: '', sampleInputs: [], ...overrides,
       });
       if (!isCurrent(generation, token)) return;
       install(response);
+      if (response.workspace && ['start', 'samples', 'resetSamples'].includes(action)) {
+        setSampleRows(response.workspace.inputs); setRecipeName(response.workspace.name);
+        if (action === 'start') setEditingSamples(!response.workspace.ready);
+        if (action === 'samples' && wasSetup) setEditingSamples(false);
+        setPlacement(null); setTentative(null);
+      }
       if (response.view.running || action === 'preview') setPreviewValid(true);
-      else if (['start', 'choose', 'intersect', 'undo', 'recipe'].includes(action)) {
+      else if (['start', 'choose', 'intersect', 'undo', 'recipe', 'samples', 'resetSamples'].includes(action)) {
         setPreviewValid(false); setInputs([]); setActive(0); setHover(null); setInspection('');
         if (action === 'start') {
           setFinalPoint(response.point ?? 1); setCoordinate(response.coordinate ?? 'x');
@@ -144,13 +183,34 @@ export default function ConstructionPanel(props) {
     if (sceneRef.current) install({ ...sceneRef.current, view: { ...sceneRef.current.view, choices: [] } });
   }
   function select(index, kind) {
-    if (busy || scene?.view.running) return;
+    if (busy || editingSamples || scene?.view.running) return;
     if (spec[3][active] !== kind) { setMessage(`Choose a ${spec[3][active]} for ${spec[2][active]}.`); return; }
     invalidate(); setInputs(old => { const next = [...old]; next[active] = index; return next; });
     setActive(Math.min(active + 1, spec[2].length - 1));
   }
   function screen([x, y]) {
     return [(x - box[0]) / viewport.width * WIDTH, HEIGHT - (y - box[2]) / viewport.width * WIDTH];
+  }
+  const workspace = scene?.workspace;
+  const setup = props.workspace && workspace?.ready === false;
+  function editRow(index, patch) {
+    invalidate(); setSampleRows(rows => rows.map((r, i) => i === index ? { ...r, ...patch } : r));
+  }
+  function samplePosition(ev) {
+    const rect = canvas.current.getBoundingClientRect();
+    const x = box[0] + (ev.clientX - rect.left) / rect.width * viewport.width;
+    const y = box[3] - (ev.clientY - rect.top) / rect.height * (box[3] - box[2]);
+    return { exact: [snapSample(x, gridFor(viewport).step), snapSample(y, gridFor(viewport).step)], pixel: screen([x, y]) };
+  }
+  function placeSample(ev, index, first = null) {
+    try {
+      const position = samplePosition(ev), row = sampleRows[index];
+      if (row.kind === 'line' && !first) { setPlacement({ index, first: position.exact }); return; }
+      const values = row.kind === 'line' ? [...first, ...position.exact] : position.exact;
+      const rows = sampleRows.map((r, i) => i === index ? { ...r, values, keep: false } : r);
+      invalidate(); setSampleRows(rows); setPlacement(null); setTentative(null);
+      if (!setup) request('samples', { sampleInputs: rows, recipeName });
+    } catch (error) { setMessage(String(error)); }
   }
   function draw(object, candidate) {
     const values = visibleNumbers(object), selected = !candidate && inputs.includes(object.index);
@@ -166,7 +226,11 @@ export default function ConstructionPanel(props) {
     if (object.kind === 'point') {
       const [cx, cy] = screen(values);
       if (![cx, cy].every(Number.isFinite)) return null;
-      return e('g', { key, ...inspect, 'data-history-role': historyRole, onClick: () => select(object.index, 'point'), style },
+      return e('g', { key, ...inspect, 'data-history-role': historyRole,
+        onPointerDown: ev => {
+          if (!editingSamples || busy || placement || object.index >= sampleRows.length) return;
+          ev.stopPropagation(); sampleDrag.current = object.index; canvas.current.setPointerCapture(ev.pointerId);
+        }, onClick: () => select(object.index, 'point'), style },
         e('title', null, title), e('circle', { cx, cy, r: 12, fill: 'transparent' }),
         e('circle', { cx, cy, r: historyRole ? 6 : 4, fill: color }), e('text', { x: cx + 7, y: cy - 7, fill: color, fontSize: 12 }, `P${object.index}`));
     }
@@ -232,35 +296,65 @@ export default function ConstructionPanel(props) {
   const unresolvedDisplay = [...objects, ...choices].some(o => needsRefinement(o, viewport));
   return e('details', { open: true, style: { maxWidth: '760px' } },
     e('summary', null, 'Origami construction'),
-    e('p', null, props.workspace ? `Recipe workspace: ${props.target}` : `Goal: ${props.target}`),
+    e('p', null, props.workspace ? `Recipe workspace: ${workspace?.name || props.target}` : `Goal: ${props.target}`),
     props.workspace && e('p', null, 'Sample inputs are parameters. Saving a recipe does not prove a theorem.'),
-    props.workspace && e('p', null, (props.parameters ?? []).map((p, i) => `${p.name}: ${p.kind === 'point' ? 'P' : 'L'}${i}`).join(' · ')),
+    props.workspace && e('p', null, (workspace?.inputs ?? props.parameters ?? []).map((p, i) => `${p.name}: ${p.kind === 'point' ? 'P' : 'L'}${i}`).join(' · ')),
+    editingSamples && sampleRows.some(r => !r.keep) && e('p', { role: 'status' }, 'Sample edits are a draft. Apply them to recompute the construction.'),
     props.saved && e('p', null, props.workspace ? 'Saved recipe. Changes are drafts until you save them.' : 'Saved construction. Changes are drafts until you save them.'),
     e('svg', { ref: canvas, viewBox: `0 0 ${WIDTH} ${HEIGHT}`, role: 'img', 'aria-label': 'Origami construction canvas',
       style: { width: '100%', border: '1px solid currentColor', touchAction: 'none', background: 'var(--vscode-editor-background)' },
-      onPointerDown: ev => { if (ev.target === ev.currentTarget) { drag.current = { x: ev.clientX, y: ev.clientY, viewport }; ev.currentTarget.setPointerCapture(ev.pointerId); } },
-      onPointerMove: ev => { if (drag.current) { const d = drag.current, scale = d.viewport.width / ev.currentTarget.getBoundingClientRect().width;
+      onPointerDown: ev => { if (editingSamples && placement) { placeSample(ev, placement.index, placement.first); return; } if (ev.target === ev.currentTarget) { drag.current = { x: ev.clientX, y: ev.clientY, viewport }; ev.currentTarget.setPointerCapture(ev.pointerId); } },
+      onPointerMove: ev => { if (sampleDrag.current !== null) { setTentative(samplePosition(ev).pixel); return; } if (drag.current) { const d = drag.current, scale = d.viewport.width / ev.currentTarget.getBoundingClientRect().width;
         setViewport({ ...d.viewport, x: d.viewport.x - (ev.clientX - d.x) * scale, y: d.viewport.y + (ev.clientY - d.y) * scale }); } },
-      onPointerUp: () => { drag.current = null; }, onPointerCancel: () => { drag.current = null; },
+      onPointerUp: ev => { if (sampleDrag.current !== null) { const index = sampleDrag.current; sampleDrag.current = null; placeSample(ev, index); } drag.current = null; }, onPointerCancel: () => { drag.current = null; sampleDrag.current = null; setTentative(null); },
     }, e('g', { pointerEvents: 'none', stroke: 'currentColor', fill: 'currentColor', strokeOpacity: 0.2, fillOpacity: 0.65, fontSize: 10 }, ...gridLines),
       ...objects.filter(o => o.kind === 'line' && o.index !== historyStep?.output).map(o => draw(o, false)),
       ...choices.map(o => draw(o, true)),
       ...objects.filter(o => o.kind === 'point' && o.index !== historyStep?.output).map(o => draw(o, false)),
-      ...objects.filter(o => o.index === historyStep?.output).map(o => draw(o, false))),
+      ...objects.filter(o => o.index === historyStep?.output).map(o => draw(o, false)),
+      tentative && e('circle', { cx: tentative[0], cy: tentative[1], r: 7, fill: '#4ea1ff', pointerEvents: 'none' })),
     e('p', { role: 'status', style: { height: '4em', overflowY: 'auto', margin: '6px 0', fontSize: '0.9em' } },
       historyStep ? `${selectedGroup ? "Recipe" : `Step ${historyIndex + 1}`}: ${historyStep.description}. Inputs (blue): ${historyStep.inputs.map(objectLabel).join(', ')}. Output (orange): ${objectLabel(historyStep.output)}.` :
       inspection || 'Hover over a point or line to inspect its approximate coordinates or equation.'),
     e('details', { onToggle: ev => { if (!ev.currentTarget.open) setHistoryIndex(null); } },
       e('summary', null, 'Construction history'),
       e('p', null, 'Hover over a step or focus it with Tab to highlight its inputs and result.'),
-      e('ol', { style: { maxHeight: '200px', overflowY: 'auto', margin: '6px 0' } }, ...historyRows())),
+      e('ol', { style: { maxHeight: '200px', overflowY: 'auto', margin: '6px 0' } }, ...historyRows(), scene?.view.failure && e('li', { 'aria-invalid': true, style: { color: 'var(--vscode-errorForeground)' } }, scene.view.failure))),
     e('div', null,
       button('Zoom in', () => setViewport(v => ({ ...v, width: Math.max(1e-12, v.width / 2) }))),
       button('Zoom out', () => setViewport(v => ({ ...v, width: Math.min(1e12, v.width * 2) }))),
       button('Reset view', () => setViewport(initialViewport)),
       button('Refine display', () => setExtraBits(b => Math.min(480, b + 32)), !!busy),
-      button('Undo', () => request('undo'), !scene || scene.view.steps === 0)),
+      button('Undo', () => request('undo'), !scene || scene.view.steps === 0 || !!scene.view.running || !!editingSamples)),
     unresolvedDisplay && e('p', { role: 'status' }, 'Some objects need more display precision. Refine or use the exact object list.'),
+    props.workspace && e('section', { 'aria-label': 'Sample inputs' },
+      !setup && button(editingSamples ? 'Finish editing samples' : 'Edit samples', () => {
+        setEditingSamples(!editingSamples); setPlacement(null); setTentative(null); setSubmission(null);
+      }, !!busy || (editingSamples && (sampleRows.some(r => !r.keep) || recipeName !== workspace?.name))),
+      (setup || editingSamples) && e('fieldset', null, e('legend', null, setup ? 'Set up recipe' : 'Preview with different samples'),
+        e('label', null, 'Recipe name ', e('input', { 'aria-label': 'Recipe name', placeholder: 'myMidpoint', value: recipeName, disabled: !!workspace?.nameLocked || !!busy,
+          onChange: ev => { invalidate(); setRecipeName(ev.target.value); } })),
+        e('p', null, 'Samples are inputs, not folding steps. Enter integers or fractions. Drag a sample point, or use Place for grid placement. Lines use two clicks. Exact replay runs on release.'),
+        ...sampleRows.map((row, i) => e('fieldset', { key: i }, e('legend', null, `${row.kind} input ${i}`),
+          e('label', null, 'Name ', e('input', { 'aria-label': `Input ${i} name`, value: row.name, disabled: !setup || !!busy,
+            onChange: ev => editRow(i, { name: ev.target.value }) })),
+          row.kind === 'line' && row.values.length !== 4 && e('p', null, 'Equation: a x + b y = c'),
+          ...(row.kind === 'point' ? ['x', 'y'] : row.values.length === 4 ? ['x₁', 'y₁', 'x₂', 'y₂'] : ['a', 'b', 'c']).map((label, j) =>
+            e('label', { key: j }, `${label} `, e('input', { 'aria-label': `Input ${i} ${label}`, value: row.values[j] ?? '',
+              placeholder: 'unchanged exact value', disabled: !!busy, style: { width: '7em' },
+              onChange: ev => { const values = [...row.values]; values[j] = ev.target.value; editRow(i, { values, keep: false }); } }))),
+          row.keep && e('small', null, ' Exact input is preserved. Fill every coordinate to replace it.'),
+          button(`Place ${row.name || row.kind}`, () => { setPlacement({ index: i, first: null }); setMessage(''); }, !!busy),
+          row.kind === 'line' && button('Enter equation', () => editRow(i, { values: ['', '', ''], keep: false }), !!busy),
+          setup && button(`Remove input ${i}`, () => { invalidate(); setSampleRows(rows => rows.filter((_, j) => j !== i)); setPlacement(null); }, !!busy))),
+        setup && e('div', null, ...['point', 'line'].map(kind => button(`Add ${kind} input`, () => {
+          invalidate(); setSampleRows(rows => [...rows, { name: '', kind, values: kind === 'point' ? ['0', '0'] : ['1', '0', '0'], keep: false }]);
+        }, !!busy))),
+        placement && e('p', { role: 'status' }, placement.first ? 'Click the second point of the sample line.' : 'Click on the canvas to place this input.'),
+        button(setup ? 'Start construction' : 'Apply samples', () => request('samples', { sampleInputs: sampleRows, recipeName }), !!busy || !sampleRows.length),
+        !setup && button('Reset samples', () => request('resetSamples'), !!busy))),
+    scene?.view.failure && e('p', { role: 'alert' }, `${scene.view.failure} Downstream results are hidden. Edit samples or reset to try again; the recipe is retained.`),
+    !setup && !editingSamples && e('div', null,
     e('label', null, 'Operation ', e('select', { value: operation, disabled: !!busy || !!scene?.view.running, onChange: ev => { invalidate(); setOperation(ev.target.value); setInputs([]); setActive(0); } },
       ...availableOperations.map(o => e('option', { key: o[0], value: o[0] }, o[1])))),
     e('p', { style: { margin: '6px 0' } }, spec[4]),
@@ -273,8 +367,8 @@ export default function ConstructionPanel(props) {
     button(operation.startsWith('recipe:') ? 'Run recipe' : operation === 'intersection' ? 'Add intersection' : 'Preview folds',
       () => request(operation.startsWith('recipe:') ? 'recipe' : operation === 'intersection' ? 'intersect' : 'preview'),
       !!busy || !!scene?.view.running || spec[2].some((_, i) => inputs[i] === undefined)),
-    scene?.view.running && e('p', null, 'Recipe paused: choose a fold below, or cancel the whole call.',
-      button('Cancel recipe', () => request('undo'), !!busy)),
+    scene?.view.running && !scene.view.failure && e('p', null, workspace?.replaying ? 'Preview paused: choose a fold below, or edit/reset samples.' : 'Recipe paused: choose a fold below, or cancel the whole call.',
+      !workspace?.replaying && button('Cancel recipe', () => request('undo'), !!busy))),
     choices.length > 0 && e('div', null, e('p', null, `${choices.length} exact choice(s). Select by number if previews overlap.`),
       ...choices.map(o => e('div', { key: o.index, onMouseEnter: () => setHover(o.index), onMouseLeave: () => setHover(null) },
         button(`Use fold ${o.index + 1}`, () => request('choose', { choice: o.index }), !!busy),
@@ -283,7 +377,7 @@ export default function ConstructionPanel(props) {
       e('ul', null, ...objects.map(o => e('li', { key: o.index },
         button(`${o.kind} ${o.index}`, () => select(o.index, o.kind)),
         e('span', null, describeObject(o)))))),
-    e('fieldset', null, e('legend', null, props.workspace ? 'Recipe output' : 'Submit a coordinate'),
+    !setup && !editingSamples && e('fieldset', null, e('legend', null, props.workspace ? 'Recipe output' : 'Submit a coordinate'),
       e('select', { 'aria-label': props.workspace ? 'Recipe output' : 'Final point', disabled: !!busy || !!scene?.view.running, value: objects.some(o => (props.workspace || o.kind === 'point') && o.index === finalPoint) ? finalPoint : '', onChange: ev => { invalidate(); setFinalPoint(Number(ev.target.value)); } },
         e('option', { value: '', disabled: true }, props.workspace ? 'Select an object' : 'Select a point'),
         ...objects.filter(o => props.workspace || o.kind === 'point').map(o => e('option', { key: o.index, value: o.index }, `${o.kind} ${o.index}`))),

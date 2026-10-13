@@ -28,3 +28,6 @@ lake lean .lake/phase6/Saved.lean
 # Parameterized recipes: execution on new inputs and independent saved-proof replay.
 lake lean LeanOrigamiTests/RecipeRuntime.lean -- --run LeanOrigamiTests/RecipeRuntime.lean
 lake lean .lake/recipes/Replay.lean
+
+# GUI sample setup, changed-input replay, and exact sample persistence.
+lake lean LeanOrigamiTests/SampleWorkspace.lean -- --run LeanOrigamiTests/SampleWorkspace.lean

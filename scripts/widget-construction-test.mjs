@@ -86,6 +86,9 @@ assert.equal(describeObject(line(2, 1, -2, 0.5)), '1 x + -2 y = 0.5');
 assert.equal(describeObject(point(0, 1e-12, 1e24)), '(1e-12, 1e+24)');
 const start = { session: { p: 'initial' }, view: { objects: [point(0, 0, 0), point(1, 1, 0)], choices: [], steps: 0 } };
 rpc = { call(name, params) {
+  // Lean's RPC decoder requires fields even when their structure has defaults.
+  assert.equal(typeof params.recipeName, 'string');
+  assert.ok(Array.isArray(params.sampleInputs));
   assert.equal(name, 'LeanOrigami.Widget.interact');
   return new Promise((resolve, reject) => requests.push({ params, resolve, reject }));
 } };
@@ -290,3 +293,75 @@ assert.equal(requests[0].params.action, 'undo');
 requests.shift().resolve(start); await flush();
 assert.ok(!walk(tree).some(n => n.children.includes('Cancel recipe')));
 console.log('PASS: standalone recipe controls, invocation arguments, grouped history, and branch cancellation');
+
+// Bare-command setup, exact grid values, sample editing, and failed replay recovery.
+assert.equal(module.namespace.snapSample(0.49, 0.5), '5/10');
+assert.equal(module.namespace.snapSample(-1.01, 0.2), '-10/10');
+assert.equal(module.namespace.snapSample(21, 10), '20');
+assert.throws(() => module.namespace.snapSample(1e100, 1), /origin/);
+assert.deepEqual(plain(module.namespace.samplePreview([{ name: 'A', kind: 'point', values: ['1/2', '-2'], keep: false }], [])), [point(0, 0.5, -2)]);
+const exactRows = [{ name: 'A', kind: 'point', values: ['0', '0'], keep: true },
+  { name: 'B', kind: 'point', values: ['1', '0'], keep: true }];
+gate = 'bare'; render(); requests.shift().resolve({ ...start,
+  view: { objects: [], choices: [], steps: 0 }, workspace: { name: '', inputs: [], ready: false, nameLocked: false } }); await flush();
+assert.ok(button('Start construction').props.disabled);
+assert.ok(!walk(tree).some(n => n.tag === 'button' && n.children.includes('Prepare recipe')));
+button('Add point input').props.onClick(); render();
+function input(label) { const node = walk(tree).find(n => n.tag === 'input' && n.props['aria-label'] === label); assert.ok(node, label); return node; }
+input('Recipe name').props.onChange({ target: { value: 'myRecipe' } }); render();
+input('Input 0 name').props.onChange({ target: { value: 'A' } }); render();
+input('Input 0 x').props.onChange({ target: { value: '1/2' } }); render();
+button('Start construction').props.onClick(); render();
+assert.equal(requests[0].params.action, 'samples');
+assert.equal(requests[0].params.recipeName, 'myRecipe');
+assert.equal(requests[0].params.sampleInputs[0].values[0], '1/2');
+const workspace = { name: 'myRecipe', inputs: exactRows, ready: true, nameLocked: false };
+requests.shift().resolve({ ...start, workspace }); await flush();
+assert.ok(button('Edit samples'));
+assert.ok(button('Prepare recipe'));
+button('Edit samples').props.onClick(); render();
+assert.ok(!walk(tree).some(n => n.tag === 'button' && n.children.includes('Prepare recipe')));
+input('Input 1 x').props.onChange({ target: { value: '0' } }); render();
+button('Apply samples').props.onClick(); render();
+assert.equal(requests[0].params.sampleInputs[0].keep, true);
+assert.equal(requests[0].params.sampleInputs[1].keep, false);
+requests.shift().resolve({ ...start, workspace, view: { ...start.view,
+  running: true, failure: 'Step 1: Choose two distinct points.' } }); await flush();
+assert.ok(walk(tree).some(n => n.props.role === 'alert' && String(n.children).includes('Step 1')));
+assert.ok(button('Apply samples'));
+button('Reset samples').props.onClick(); render();
+assert.equal(requests[0].params.action, 'resetSamples');
+requests.shift().resolve({ ...grouped, workspace }); await flush();
+button('Finish editing samples').props.onClick(); render();
+assert.ok(!button('Prepare recipe').props.disabled);
+console.log('PASS: bare setup, rational sample edits, preserved inputs, failure recovery, and reset controls');
+
+canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 560, height: 360 });
+canvas.setPointerCapture = () => {};
+button('Edit samples').props.onClick(); render();
+drawn(0).props.onPointerDown({ stopPropagation() {}, pointerId: 1 }); render();
+let svg = walk(tree).find(n => n.tag === 'svg');
+svg.props.onPointerMove({ clientX: 280, clientY: 180 }); render();
+svg = walk(tree).find(n => n.tag === 'svg');
+svg.props.onPointerUp({ clientX: 280, clientY: 180 }); render();
+assert.equal(requests[0].params.action, 'samples');
+assert.deepEqual(plain(requests[0].params.sampleInputs[0].values), ['5/10', '0/10']);
+requests.shift().resolve({ ...grouped, workspace }); await flush();
+// Two placement clicks describe a line input, not two additional point inputs.
+gate = 'line-setup'; render(); requests.shift().resolve({ ...start,
+  view: { objects: [], choices: [], steps: 0 }, workspace: { name: '', inputs: [], ready: false, nameLocked: false } }); await flush();
+button('Add line input').props.onClick(); render();
+input('Recipe name').props.onChange({ target: { value: 'lineRecipe' } }); render();
+input('Input 0 name').props.onChange({ target: { value: 'L' } }); render();
+button('Place L').props.onClick(); render();
+const clickCanvas = (x, y) => {
+  const svg = walk(tree).find(n => n.tag === 'svg');
+  svg.props.onPointerDown({ clientX: x, clientY: y, target: canvas, currentTarget: canvas }); render();
+};
+clickCanvas(210, 180); clickCanvas(350, 180);
+button('Start construction').props.onClick(); render();
+assert.equal(requests[0].params.sampleInputs.length, 1);
+assert.equal(requests[0].params.sampleInputs[0].kind, 'line');
+assert.deepEqual(plain(requests[0].params.sampleInputs[0].values), ['0/10', '0/10', '10/10', '0/10']);
+requests.shift().reject(new Error('test cleanup')); await flush();
+console.log('PASS: point drag replays on release and two-click line placement creates one input');

@@ -1014,6 +1014,59 @@ transfer recipes are the planned next library additions; start with midpoint
 to validate the complete workflow, reusing existing correctness results where
 applicable. Phase 9 retains the general symbolic-proof work.
 
+### Phase 6S — GUI sample setup and recipe previews
+
+**Complete, 2026-10-13.** See [checkpoint audit](docs/phase-6-samples.md).
+Before Phase 7, let bare
+`origami_recipe` open a setup panel, and let users explore a recipe on different
+samples. Preserve the existing explicit command syntax and certification path.
+
+1. **Open and name a workspace.** Accept the bare command and show a setup
+   panel immediately after Lean processes it. Enter the recipe name in the GUI;
+   check that it is a valid, available declaration name. An unnamed draft must
+   not register a declaration or appear in other widgets' operation menus.
+2. **Create sample inputs visually.** Add named point or line parameters.
+   Place points on a rational grid or enter exact rational coordinates. Place
+   a line with two distinct grid points, or enter rational coefficients for
+   its equation; reject an invalid zero normal. Placement clicks define samples,
+   not extra recipe parameters or construction steps. Keep setup and folding
+   modes visibly distinct. Retain existing exact algebraic samples when opening
+   older workspaces; never silently replace them with display approximations.
+3. **Preview on different samples.** Offer **Edit samples** during authoring
+   and after reopening a saved recipe. Drag point inputs, reposition line
+   inputs, or edit their exact values. Show tentative placement while dragging;
+   recompute exact geometry on release. Keep parameter identities, recipe
+   instructions, output reference, and nested history intact. Once instructions
+   exist, keep parameter kinds/order fixed rather than silently breaking refs.
+4. **Replay clearly and safely.** Refactor the existing recipe replay to retain
+   instructions separately from the current execution. Automatically advance
+   unique steps; pause and ask again at ambiguous folds. On failure, identify
+   the step and reason, retain the valid prefix, and hide unavailable downstream
+   objects. Keep the full recipe available for another sample edit. Reject stale
+   asynchronous results, and prevent a partial replay from overwriting the full
+   recipe. Do not carry old branch indices to changed inputs.
+5. **Save, reset, and reopen.** **Reset samples** restores the saved example
+   (or the initial setup values in an unsaved workspace) and replays it. Saving
+   a completed draft writes the name, exact samples, and template into the same
+   command using the existing versioned edit mechanism. Reopening restores the
+   editable workspace. Sample changes remain separate from recipe instructions
+   and never change the allowed seeds of a proof.
+6. **Validate and audit.** Add focused separate tests for the bare command,
+   name/input validation, exact grid placement, line inputs, midpoint previews
+   on changed samples, fresh branch selection, degeneracy and recovery, stale
+   replies, reset, and save/reopen. Perform one live walkthrough from the bare
+   command through sample setup, recipe creation, changed-input preview, saving,
+   and use in a kernel-checked proof. Reuse/refactor the existing panel and replay
+   code; do not build a second editor. Audit code size, documentation, and the
+   separation of approximate rendering from exact data at the checkpoint.
+
+**Acceptance:** a user can start with only `origami_recipe`, create its named
+inputs in the GUI, build and save a recipe, and preview it on different samples
+without losing its instructions or seeing stale results. Saved workspaces remain
+editable and their recipes remain usable in proofs. Exploration makes no claim
+that a recipe works for every input. Continuous recomputation while dragging,
+automatic branch predicates, and symbolic correctness proofs remain later work.
+
 ### Phase 7 — Package the main theory and release
 
 Package the arithmetic results as a subfield of `ℝ`, and expose clean

@@ -28,6 +28,7 @@ structure Session where
   groups : Array RecipeGroup := #[]
   running : Option RecipeCursor := none
   result : Option Nat := none
+  failure : Option String := none
 
 /-- Human-readable geometric failures, shared by all editing operations. -/
 def errorMessage : ConstructionError → String
@@ -76,41 +77,57 @@ def Session.intersect (session : Session) (left right : Nat) : Except String Ses
   let p ← (Solver.intersect l r).mapError errorMessage
   session.append (.intersect ⟨left⟩ ⟨right⟩ p.val)
 
-private def Session.advance (session : Session) (steps : List RecipeOperation) :
-    Except String Session := do
+/-- Continue discovery, retaining the valid prefix if a step fails. The cursor
+keeps the unexecuted instructions; callers choose whether to expose this draft. -/
+private def Session.advance (session : Session) (steps : List RecipeOperation) : Session :=
   match steps with
-  | [] =>
-    let some cursor := session.running | return session
-    let groups := if cursor.group.name.isEmpty || cursor.group.count == 0 then session.groups
-      else session.groups.push cursor.group
-    return { session with
-      running := none, result := some cursor.group.output
-      groups := groups ++ cursor.nested }
+  | [] => match session.running with
+    | none => session
+    | some cursor =>
+      let groups := if cursor.group.name.isEmpty || cursor.group.count == 0 then session.groups
+        else session.groups.push cursor.group
+      { session with
+        running := none, result := some cursor.group.output
+        groups := groups ++ cursor.nested, failure := none }
   | step :: rest =>
-    let some cursor := session.running | throw "No recipe is running."
-    let session := { session with running := some { cursor with remaining := rest } }
-    match step with
-    | .intersect l r => (← session.intersect l.index r.index).advance rest
-    | .fold request =>
-      let preview ← session.preview request
-      match preview.pending with
-      | some (_, [crease]) => (← preview.append (.fold request crease)).advance rest
-      | some _ => return preview
-      | none => throw "Recipe discovery did not produce a preview."
+    let attempt : Except String Session := do
+      match step with
+      | .intersect l r => session.intersect l.index r.index
+      | .fold request =>
+        let preview ← session.preview request
+        match preview.pending with
+        | some (_, [crease]) => preview.append (.fold request crease)
+        | some _ => pure preview
+        | none => throw "Recipe discovery did not produce a preview."
+    match attempt with
+    | .error message => { session with
+        pending := none
+        failure := some s!"Step {session.program.length + 1}: {message}" }
+    | .ok next =>
+      let next : Session := { next with running := next.running.map fun (cursor : RecipeCursor) => { cursor with remaining := rest } }
+      if next.pending.isSome then next else Session.advance next rest
 
-/-- Commit a current exact choice, then continue a paused recipe, if any. -/
-def Session.choose (session : Session) (index : Nat) : Except String Session := do
+/-- Convert a replay failure to the ordinary atomic-call error, unless the
+workspace needs its valid prefix for diagnosis and sample editing. -/
+private def Session.replayResult (session : Session) (retainFailure : Bool) : Except String Session := do
+  if !retainFailure then
+    if let some message := session.failure then throw message
+  return session
+
+/-- Commit a current exact choice, then continue a paused recipe, if any.
+Workspaces can retain a failed continuation without losing the full recipe. -/
+def Session.choose (session : Session) (index : Nat) (retainFailure : Bool := false) : Except String Session := do
   let some (request, choices) := session.pending | throw "Preview a fold first."
   let some crease := choices[index]? | throw "This fold choice is no longer available."
   let next ← session.append (.fold request crease)
   match session.running with
   | none => return next
-  | some cursor => next.advance cursor.remaining
+  | some cursor => (next.advance cursor.remaining).replayResult retainFailure
 
 /-- Instantiate on existing exact objects. No sample coordinates or old branch
 indices survive. Empty names replay a workspace without grouping its whole body. -/
 def Session.useRecipe (session : Session) (name : String) (recipe : RecipeTemplate)
-    (arguments : Array Nat) : Except String Session := do
+    (arguments : Array Nat) (retainFailure : Bool := false) : Except String Session := do
   if session.running.isSome then throw "Finish or cancel the current recipe first."
   let _ ← recipe.validate
   unless arguments.size == recipe.parameters.size do throw "Select every recipe input."
@@ -125,8 +142,8 @@ def Session.useRecipe (session : Session) (name : String) (recipe : RecipeTempla
   let group : RecipeGroup := ⟨name, session.program.length, steps.length, arguments, relocate recipe.output⟩
   let nested := recipe.groups.map fun g => { g with
     start := session.program.length + g.start, inputs := g.inputs.map relocate, output := relocate g.output }
-  let session := { session with pending := none, running := some ⟨steps, group, nested⟩ }
-  session.advance steps
+  let session := { session with pending := none, failure := none, running := some ⟨steps, group, nested⟩ }
+  (session.advance steps).replayResult retainFailure
 
 /-- Remove one primitive or an entire completed/paused recipe call. -/
 def Session.undo (session : Session) : Except String Session := do
@@ -137,7 +154,7 @@ def Session.undo (session : Session) : Except String Session := do
   let program := session.program.take stop
   let objects ← (Program.execute session.seeds program).mapError errorMessage
   return { session with
-    program, objects, pending := none, running := none, result := none
+    program, objects, pending := none, running := none, result := none, failure := none
     groups := session.groups.filter (fun g => g.start + g.count ≤ stop) }
 
 /-- Record operations, not the exact results on the workspace's sample inputs. -/
@@ -222,6 +239,7 @@ structure View where
   groups : Array RecipeGroup := #[]
   running : Bool := false
   result : Option Nat := none
+  failure : Option String := none
   deriving Lean.ToJson, Lean.FromJson
 
 /-- Render a snapshot at the requested precision, preserving exact candidate identity. -/
@@ -232,6 +250,7 @@ def Session.view (session : Session) (bits : Nat) : View :=
     steps := session.program.length
     history := session.program.toArray.mapIdx fun i step =>
       historyStep (session.seeds.length + i) step
-    groups := session.groups, running := session.running.isSome, result := session.result }
+    groups := session.groups, running := session.running.isSome, result := session.result
+    failure := session.failure }
 
 end LeanOrigami.Widget

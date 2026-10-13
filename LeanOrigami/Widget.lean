@@ -39,6 +39,7 @@ structure Snapshot where
   gate : Name
   document : DocumentMeta
   session : Session
+  workspace : Option WorkspaceState := none
   deriving TypeName
 
 /-- Browser properties contain an opaque context reference, never proof evidence. -/
@@ -51,7 +52,8 @@ structure PanelProps where
   parameters : Array RecipeParameter := #[]
   deriving RpcEncodable
 
-/-- Every request refers to the exact preview snapshot it operates on. -/
+/-- Every request refers to the exact preview snapshot it operates on. The
+browser sends every field, including defaults required by RPC decoding. -/
 structure Interaction where
   gate : WithRpcRef PanelContext
   session : Option (WithRpcRef Snapshot) := none
@@ -62,6 +64,8 @@ structure Interaction where
   point : Nat := 1
   coordinate : String := "x"
   bits : Nat := 48
+  recipeName : String := ""
+  sampleInputs : Array SampleInput := #[]
   deriving RpcEncodable
 
 /-- A new immutable snapshot, with an optional already checked source edit. -/
@@ -72,6 +76,7 @@ structure Response where
   source : String := ""
   point : Nat := 1
   coordinate : String := "x"
+  workspace : Option WorkspaceView := none
   deriving RpcEncodable
 
 private def result {α : Type} (value : Except String α) : RequestM α :=
@@ -139,12 +144,15 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     throw (.invalidParams "The source changed. Reopen the construction at its current source location.")
   let mut point := request.point
   let mut coordinate := request.coordinate
-  let snapshot ← match request.session with
+  let snapshot : Snapshot ← match request.session with
     | none =>
       unless request.action == "start" do throw (.invalidParams "Open a construction first.")
       let mut session : Session := {}
+      let mut workspaceState : Option WorkspaceState := none
       if let some workspace := gate.workspace then
-        session ← result (← gate.context.runMetaM gate.locals (openWorkspace workspace))
+        let (state, loaded) ← result (← gate.context.runMetaM gate.locals (openWorkspace workspace))
+        workspaceState := some state
+        session := loaded
         point := session.result.getD 0
       else if let some saved := gate.saved then
         let restored ← try
@@ -154,7 +162,7 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
         session := { loaded with groups := gate.groups }
         point := selected
         coordinate := match axis with | .x => "x" | .y => "y"
-      pure { gate := gate.id, document, session }
+      pure { gate := gate.id, document, session, workspace := workspaceState }
     | some reference =>
       let saved := reference.val
       unless saved.gate == gate.id && saved.document.uri == document.uri &&
@@ -162,9 +170,13 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
         throw (.invalidParams "This construction belongs to an earlier editor or source version.")
       pure saved
   let mut session := snapshot.session
+  let mut workspaceState : Option WorkspaceState := snapshot.workspace
   let mut source := ""
   let mut edit := none
-  if session.running.isSome && !(["start", "render", "choose", "undo"].contains request.action) then
+  if workspaceState.any (fun state => !state.ready) &&
+      !(["start", "render", "samples"].contains request.action) then
+    throw (.invalidParams "Name the recipe and set up its inputs first.")
+  if session.running.isSome && !(["start", "render", "choose", "undo", "samples", "resetSamples"].contains request.action) then
     throw (.invalidParams "Finish or cancel the current recipe first.")
   match request.action with
   | "start" | "render" => pure ()
@@ -172,7 +184,8 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     let some number := request.operation.toNat? | throw (.invalidParams "Unknown fold operation.")
     let fold ← result (foldRequest number request.inputs.toList)
     session ← result (session.preview fold)
-  | "choose" => session ← result (session.choose request.choice)
+  | "choose" => session ← result (session.choose request.choice
+      (retainFailure := workspaceState.any (·.replaying)))
   | "intersect" =>
     let [left, right] := request.inputs.toList
       | throw (.invalidParams "Select two lines to intersect.")
@@ -181,13 +194,35 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     let some recipe := gate.library.find? (·.id == request.operation)
       | throw (.invalidParams "This recipe is not available in the current context.")
     session ← result (session.useRecipe recipe.name recipe.template request.inputs)
-  | "undo" => session ← result session.undo
+  | "samples" =>
+    let some workspace := gate.workspace | throw (.invalidParams "Samples can only be edited outside a proof.")
+    let some state := workspaceState | throw (.invalidParams "Open a recipe workspace first.")
+    let name ← try gate.context.runMetaM gate.locals (validateRecipeName workspace request.recipeName)
+      catch error => throw (.invalidParams error.message)
+    let (state, changed) ← result (state.applySamples session name request.sampleInputs request.point)
+    workspaceState := some state
+    session := changed
+    point := session.result.getD 0
+  | "resetSamples" =>
+    let some state := workspaceState | throw (.invalidParams "Open a recipe workspace first.")
+    let (state, changed) ← result (state.resetSamples session request.point)
+    workspaceState := some state
+    session := changed
+    point := session.result.getD 0
+  | "undo" =>
+    if workspaceState.any (·.replaying) then
+      throw (.invalidParams "Edit or reset samples to recover the retained recipe.")
+    session ← result session.undo
   | "submit" =>
     let replacement ← match gate.workspace with
       | some workspace => do
-        let recipe ← result (session.template workspace.parameters request.point)
+        let some state := workspaceState | throw (.invalidParams "Set up the recipe first.")
+        if state.replaying then throw (.invalidParams "Complete the preview before saving the recipe.")
+        let name ← try gate.context.runMetaM gate.locals (validateRecipeName workspace state.name)
+          catch error => throw (.invalidParams error.message)
+        let recipe ← result (session.template (state.inputs.map fun p => ⟨p.name, p.kind⟩) request.point)
         source := recipe.source
-        pure (workspace.sourcePrefix ++ " saved (" ++ source ++ ")")
+        pure ("origami_recipe " ++ name ++ " samples (" ++ state.sampleSource ++ ") saved (" ++ source ++ ")")
       | none => do
         let axis ← match request.coordinate with
           | "x" => pure Coordinate.x
@@ -201,8 +236,12 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     let replacement := replacement.replace "\n" ("\n" ++ indent)
     edit := some (MakeEditLinkProps.ofReplaceRange document gate.range replacement).edit
   | _ => throw (.invalidParams "Unknown construction action.")
-  return { session := ← WithRpcRef.mk { snapshot with session }
-           view := session.view request.bits, edit, source, point, coordinate }
+  workspaceState := workspaceState.map fun state =>
+    { state with replaying := state.replaying && session.running.isSome }
+  let workspaceView : Option WorkspaceView := workspaceState.map fun (state : WorkspaceState) => WorkspaceView.mk state.name state.ready
+    (gate.workspace.any (fun w => !w.name.isEmpty)) state.inputs state.replaying
+  return { session := ← WithRpcRef.mk { snapshot with session, workspace := workspaceState }
+           view := session.view request.bits, edit, source, point, coordinate, workspace := workspaceView }
 
 /-- Interactive SVG panel; JavaScript is source-controlled and needs no bundler. -/
 @[widget_module]
@@ -266,12 +305,23 @@ def elabOrigami : Tactic
 
 /-- Define and visually edit a recipe without a theorem. Sample objects are
 parameters; only a saved template is registered as an available operation. -/
-syntax (name := origamiRecipeCommand) "origami_recipe " ident ppSpace &"samples" ppSpace "(" term ")"
-  (ppSpace &"saved" ppSpace term)? : command
+syntax (name := origamiRecipeCommand) "origami_recipe"
+  (ppSpace ident ppSpace &"samples" ppSpace "(" term ")"
+    (ppSpace &"saved" ppSpace term)?)? : command
 
 @[command_elab origamiRecipeCommand]
 def elabRecipeCommand : Command.CommandElab
+  | stx@`(origami_recipe) => do
+    let namespaceName ← getCurrNamespace
+    Command.runTermElabM fun _ => do
+      let samples ← Term.elabTerm (← `(([] : LeanOrigami.Widget.RecipeSamples))) none
+      let recipe ← Term.elabTerm (← `(({ parameters := #[] } : LeanOrigami.Widget.RecipeTemplate))) none
+      let workspace : WorkspaceContext := {
+        name := "", namespaceName, sampleSource := "[]", draft := true
+        samples, recipe, parameters := #[] }
+      registerPanel stx "New recipe" none none (some workspace)
   | stx@`(origami_recipe $name:ident samples ($sampleTerm:term) $[saved $source:term]?) => do
+    let namespaceName ← getCurrNamespace
     let (sampleExpr, parameters) ← Command.runTermElabM fun _ => do
       let sampleExpr ← Term.elabTermEnsuringType sampleTerm (mkConst ``RecipeSamples)
       Term.synthesizeSyntheticMVarsNoPostponing
@@ -296,8 +346,8 @@ def elabRecipeCommand : Command.CommandElab
     Command.runTermElabM fun _ => do
       let recipe ← Term.elabTerm name (some (mkConst ``RecipeTemplate))
       let workspace : WorkspaceContext := {
-        sourcePrefix := "origami_recipe " ++ name.raw.reprint.getD name.getId.toString ++
-          " samples (" ++ sampleTerm.raw.reprint.getD "" ++ ")"
+        name := (name.raw.reprint.getD name.getId.toString).trimAscii.toString
+        namespaceName, sampleSource := sampleTerm.raw.reprint.getD ""
         samples := sampleExpr, recipe, parameters }
       registerPanel stx name.getId.toString none none (some workspace) #[] source.isSome
   | _ => throwUnsupportedSyntax
