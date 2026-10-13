@@ -113,9 +113,9 @@ def CertificateSource.artifact (source : CertificateSource) : Artifact :=
     "#print axioms accepted\n#print axioms submitted\nend SavedOrigami\n"
   ⟨1, "SavedOrigami.submitted", text⟩
 
-/-- A local proof body with the same exact data as a standalone artifact.
-The caller supplies a final goal-matching tactic, which Lean must check. -/
-def CertificateSource.proof (source : CertificateSource) (finish : String) : String :=
+/-- An expression sharing the exact program and its acceptance certificate.
+The continuation can return a proof or a persistent, editable construction. -/
+def CertificateSource.expression (source : CertificateSource) (finish : String) : String :=
   let declarations := source.fields.map fun (name, value) =>
     s!"  let {name} : LeanOrigami.Scalar.Presentation := {value}\n"
   "set_option maxRecDepth 8192 in\nset_option maxHeartbeats 4000000 in\n" ++
@@ -124,8 +124,12 @@ def CertificateSource.proof (source : CertificateSource) (finish : String) : Str
     s!"  let target : LeanOrigami.Scalar := {source.target}\n" ++
     s!"  have accepted : {source.acceptance} := by\n" ++
     s!"    dsimp only [program, target]\n    origami_check using {source.arithmetic}\n" ++
-    s!"  have constructed := {source.conclusion}\n" ++
     "  " ++ finish.replace "\n" "\n  " ++ "\n"
+
+/-- A local proof body with the same exact data as a standalone artifact.
+The caller supplies a final goal-matching tactic, which Lean must check. -/
+def CertificateSource.proof (source : CertificateSource) (finish : String) : String :=
+  source.expression (s!"have constructed := {source.conclusion}\n" ++ finish)
 
 /-- Prepare a standalone certificate for actual exact choices. A caller that
 records steps while editing can supply that arithmetic log; otherwise export

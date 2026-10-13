@@ -72,11 +72,14 @@ native libraries. This check is also included in the validation script.
 
 Import `LeanOrigami.Widget` and use `origami` inside a `ConstructibleNumber`
 goal. The panel supports exact fold selection, intersections, undo, pan/zoom,
-and checked proof submission. See [the widget guide](docs/widget.md) for
+and checked proof submission. Saving writes `origami saved (...)`: put the
+cursor on that tactic later to reopen and edit the proved construction.
+See [the widget guide](docs/widget.md) for
 step-by-step constructions and the supported named targets, and
 [the Phase 6 audit](docs/phase-6.md) for current validation status.
 
-`LeanOrigamiDemos/Visual.lean` provides starting goals. The earlier
+`LeanOrigamiDemos/Visual.lean` provides saved half and square-root constructions
+as well as empty starting goals. The earlier
 `LeanOrigamiDemos/Widget.lean` remains a small test of ProofWidgets' insertion
 boundary; it is not the construction interface.
 
@@ -250,4 +253,4 @@ lake lean .lake/exact/Replay.lean
 Field joining can still be expensive when a construction connects many roots.
 `LeanOrigamiNative` loads the compiled Hex backend through Lake; no manual
 shared-library list is needed.
-The canvas remains Phase 6 work.
+See the Phase 6 section above for the visual editor.

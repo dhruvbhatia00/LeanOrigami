@@ -13,7 +13,7 @@ await module.link(async name => {
   }, { context });
 });
 await module.evaluate();
-const { clipLine, precisionFor, needsRefinement, newGeneration, isCurrent } = module.namespace;
+const { describeObject, gridFor, clipLine, precisionFor, needsRefinement, newGeneration, isCurrent } = module.namespace;
 const plain = x => JSON.parse(JSON.stringify(x));
 assert.deepEqual(plain(clipLine(1, 0, 1, [-2, 2, -2, 2])), [[1, -2], [1, 2]]);
 assert.deepEqual(plain(clipLine(0, 1, 0, [-2, 2, -2, 2])), [[-2, 0], [2, 0]]);
@@ -23,6 +23,13 @@ assert.ok(precisionFor(1e-10) > precisionFor(4));
 assert.equal(precisionFor(1e-200, 480), 512);
 assert.ok(needsRefinement({ values: [{ value: '1.4', error: '0.1' }] }, { width: 4 }));
 assert.ok(!needsRefinement({ values: [{ value: '1.4', error: '1e-30' }] }, { width: 4 }));
+for (const width of [1e-12, 4, 1e12]) {
+  const grid = gridFor({ x: 0, y: 0, width });
+  assert.ok(grid.step > 0 && Number.isFinite(grid.step));
+  assert.ok(grid.xs.length > 1 && grid.xs.length <= 10);
+  assert.ok(grid.ys.length > 1 && grid.ys.length <= 10);
+  assert.ok(grid.xs.includes(0) && grid.ys.includes(0));
+}
 const ref = { current: 0 };
 const preview = newGeneration(ref), undo = newGeneration(ref);
 assert.ok(!isCurrent(ref, preview));
@@ -32,9 +39,19 @@ console.log('PASS: implicit-line clipping, vertical lines, precision, and stale-
 // Render the actual component with a small deterministic React/editor adapter.
 // This tests event wiring, not browser layout or the Lean RPC implementation.
 let slots = [], cursor = 0, effects = [], tree, requests = [], edits = [];
-let rpc, editor;
+let rpc, editor, gate = 'goal';
+const listeners = new Map();
+const canvas = {
+  addEventListener(name, callback, options) { listeners.set(name, { callback, options }); },
+  removeEventListener(name, callback) {
+    if (listeners.get(name)?.callback === callback) listeners.delete(name);
+  },
+};
 const react = {
-  createElement: (tag, props, ...children) => ({ tag, props: props ?? {}, children: children.flat(Infinity) }),
+  createElement: (tag, props, ...children) => {
+    if (tag === 'svg' && props.ref) props.ref.current = canvas;
+    return { tag, props: props ?? {}, children: children.flat(Infinity) };
+  },
   useContext: () => editor,
   useState(initial) {
     const i = cursor++;
@@ -62,6 +79,11 @@ await uiModule.evaluate();
 const approximation = value => ({ value: String(value), error: '0' });
 const point = (index, x, y) => ({ index, kind: 'point', values: [x, y].map(approximation) });
 const line = (index, a, b, c) => ({ index, kind: 'line', values: [a, b, c].map(approximation) });
+// Hover descriptions and object lists share concise approximate formatting.
+assert.equal(describeObject(point(0, 1, -0)), '(1, 0)');
+assert.equal(describeObject(point(0, Math.sqrt(2), -1 / 3)), '(1.41421, -0.333333)');
+assert.equal(describeObject(line(2, 1, -2, 0.5)), '1 x + -2 y = 0.5');
+assert.equal(describeObject(point(0, 1e-12, 1e24)), '(1e-12, 1e+24)');
 const start = { session: { p: 'initial' }, view: { objects: [point(0, 0, 0), point(1, 1, 0)], choices: [], steps: 0 } };
 rpc = { call(name, params) {
   assert.equal(name, 'LeanOrigami.Widget.interact');
@@ -74,7 +96,7 @@ editor = { api: { async applyEdit(edit) {
 } } };
 function render() {
   cursor = 0;
-  tree = uiModule.namespace.default({ gate: { p: 'goal' }, target: '1 / 2' });
+  tree = uiModule.namespace.default({ gate: { p: gate }, target: '1 / 2' });
   const pending = effects; effects = []; pending.forEach(fn => fn());
 }
 async function flush() { await new Promise(resolve => setImmediate(resolve)); render(); }
@@ -90,6 +112,19 @@ function selectors() { return walk(tree).filter(n => n.tag === 'select'); }
 render();
 assert.equal(requests.length, 1);
 requests.shift().resolve(start); await flush();
+// Wheel zoom consumes the gesture: the outer infoview must not also scroll.
+assert.equal(listeners.get('wheel').options.passive, false);
+let prevented = false, stopped = false;
+listeners.get('wheel').callback({ deltaY: 1,
+  preventDefault() { prevented = true; }, stopPropagation() { stopped = true; } });
+render();
+assert.ok(prevented && stopped);
+assert.equal(walk(tree).find(n => n.tag === 'svg').props.onWheel, undefined);
+// Object hover exposes coordinates, with approximation clearly labelled.
+walk(tree).find(n => n.tag === 'g' && n.props.key === 'o1').props.onMouseEnter(); render();
+assert.ok(walk(tree).some(n => n.props.role === 'status' && n.children.some(c => String(c).includes('point 1: ≈'))));
+walk(tree).find(n => n.tag === 'g' && n.props.key === 'o1').props.onMouseLeave(); render();
+assert.ok(walk(tree).some(n => n.children.some(c => String(c).includes('Click a point on the drawing'))));
 // A freshly decoded but equivalent RPC reference must not reset the session.
 render(); assert.equal(requests.length, 0);
 // Display requests must not serialize holes in partially selected fold inputs.
@@ -120,21 +155,49 @@ button('Preview folds').props.onClick(); render();
 requests.shift().resolve({ ...start, session: { p: 'preview' }, view: { ...start.view, choices: [line(0, 0, 1, 0), line(1, 0, 1, 0)] } });
 await flush();
 assert.ok(button('Use fold 1'));
+assert.ok(walk(tree).some(n => n.tag === 'text' && n.children.includes('Choice 2')));
 button('Use fold 2').props.onClick(); render();
 const choice = requests.shift();
 assert.equal(choice.params.session.p, 'preview'); assert.equal(choice.params.choice, 1);
 choice.resolve({ session: { p: 'committed' }, view: { objects: [...start.view.objects, line(2, 0, 1, 0)], choices: [], steps: 1 } });
 await flush();
+// Visible line labels use the same stable reference as the input controls.
+const lineLabel = walk(tree).find(n => n.tag === 'text' && n.children.includes('L2'));
+assert.ok(lineLabel);
+assert.ok(lineLabel.props.x >= 0 && lineLabel.props.x <= 560);
+assert.ok(lineLabel.props.y >= 0 && lineLabel.props.y <= 360);
+// A committed fold starts the next canvas selection at the first role.
+walk(tree).find(n => n.tag === 'g' && n.props.key === 'o0').props.onClick(); render();
+assert.equal(selectors()[1].props.value, 0);
+assert.equal(selectors()[2].props.value, '');
 // Undo stays enabled while another request is pending.
 button('Submit').props.onClick(); render(); const oldSubmission = requests.shift();
 assert.equal(button('Undo').props.disabled, false);
 button('Undo').props.onClick(); render(); requests.shift().resolve(start); await flush();
-oldSubmission.resolve({ ...start, edit: { textDocument: { uri: 'file:///proof.lean', version: 7 }, edits: [] }, proof: 'stale proof' });
-await flush(); assert.ok(!walk(tree).some(n => n.children.includes('Insert checked proof')));
+oldSubmission.resolve({ ...start, edit: { textDocument: { uri: 'file:///proof.lean', version: 7 }, edits: [] }, source: 'stale certificate' });
+await flush(); assert.ok(!walk(tree).some(n => n.children.includes('Save construction')));
 button('Submit').props.onClick(); render();
-requests.shift().resolve({ ...start, edit: { textDocument: { uri: 'file:///proof.lean', version: 7 }, edits: [] }, proof: 'checked proof' });
-await flush(); const insert = button('Insert checked proof');
+requests.shift().resolve({ ...start, edit: { textDocument: { uri: 'file:///proof.lean', version: 7 }, edits: [] }, source: 'checked certificate' });
+await flush(); const insert = button('Save construction');
 await insert.props.onClick(); render(); assert.equal(edits.length, 1);
 await insert.props.onClick(); render(); assert.equal(edits.length, 1);
 assert.ok(walk(tree).some(n => n.props.role === 'alert' && n.children.some(c => String(c).includes('stale document'))));
+// Reopening a saved tactic loads its program and its submitted coordinate.
+gate = 'saved-goal'; render();
+assert.equal(requests.length, 1);
+assert.equal(requests[0].params.action, 'start');
+assert.equal(requests[0].params.session, null);
+requests.shift().resolve({ session: { p: 'restored' }, point: 4, coordinate: 'y',
+  view: { objects: [...start.view.objects, line(2, 1, 0, 0), line(3, 0, 1, 1), point(4, 0, 1)],
+    choices: [], steps: 3, history: ['first fold', 'second fold', 'intersection'] } });
+await flush();
+assert.equal(selectors().find(n => n.props['aria-label'] === 'Final point').props.value, 4);
+assert.equal(selectors().find(n => n.props['aria-label'] === 'Coordinate').props.value, 'y');
+assert.equal(button('Undo').props.disabled, false);
+button('Submit').props.onClick(); render();
+const restoredSubmit = requests.shift();
+assert.equal(restoredSubmit.params.session.p, 'restored');
+assert.equal(restoredSubmit.params.point, 4);
+assert.equal(restoredSubmit.params.coordinate, 'y');
+restoredSubmit.reject(new Error('test cleanup')); await flush();
 console.log('PASS: panel input wiring, exact snapshot selection, undo during submission, and versioned insertion');

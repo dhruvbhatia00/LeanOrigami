@@ -59,15 +59,65 @@ example : True := by
     if accepted then throwError "The submission gate accepted a proof of the wrong type."
     Lean.Elab.Tactic.evalTactic (← `(tactic| trivial))
 
+/-- RPC proof checking must restore auxiliary names under a named theorem's
+asynchronous environment. Anonymous examples do not exercise this restriction. -/
+theorem captured_context : True := by
+  run_tac do
+    let context : Lean.Elab.ContextInfo := { ← Lean.Elab.CommandContextInfo.save with }
+    let locals ← Lean.getLCtx
+    let goal ← Lean.Elab.Tactic.getMainTarget
+    context.runMetaM locals <| checkProof goal "by decide +kernel"
+    Lean.Elab.Tactic.evalTactic (← `(tactic| trivial))
+
 /-- Opening the panel does not discharge the goal; the ordinary proof is still needed. -/
 theorem panel_registration : ConstructibleNumber (1 : ℝ) := by
   origami
   all_goals exact ConstructibleNumber.one
 
+/-- The real division is intentionally noncomputable: reopening must extract
+only the program and selection, never evaluate the real target. -/
+def savedSeed : SavedConstruction (0 / (1 : ℝ)) where
+  program := []
+  point := ⟨1⟩
+  coordinate := .y
+  target := 0
+  accepted := by
+    simp [Program.accepts, Program.submit, Program.run, Program.execute, Program.initial,
+      Program.point, Coordinate.get, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  identified := by simp [Scalar.toReal_zero]
+
+/-- A saved tactic closes its goal, while retaining its source-attached panel. -/
+theorem saved_seed : ConstructibleNumber (0 / (1 : ℝ)) := by
+  origami saved savedSeed
+
+/-- A certificate for a different target cannot discharge the current goal. -/
+example : ConstructibleNumber (1 : ℝ) := by
+  fail_if_success origami saved savedSeed
+  exact ConstructibleNumber.one
+
+/-- Reopening restores data only. Re-saving still uses the ordinary proof gate.
+Also exercise reopening in a captured named-theorem context. -/
+theorem saved_reopens : True := by
+  run_tac do
+    let context : Lean.Elab.ContextInfo := { ← Lean.Elab.CommandContextInfo.save with }
+    let restored ← context.runMetaM (← Lean.getLCtx) (reopen (Lean.mkConst ``savedSeed))
+    let .ok (session, point, coordinate) := restored
+      | throwError "Could not reopen the saved seed."
+    unless session.program.isEmpty && session.objects.length == 2 && point == 1 do
+      throwError "Saved construction data changed on reopening."
+    match coordinate with
+    | .y => pure ()
+    | .x => throwError "The saved coordinate selection was lost."
+    Lean.Elab.Tactic.evalTactic (← `(tactic| trivial))
+
 #print axioms rational_identity
 #print axioms sqrt_identity
 #print axioms cube_identity
 #print axioms coordinate_nonneg
+#print axioms captured_context
 #print axioms panel_registration
+#print axioms SavedConstruction.sound
+#print axioms saved_seed
+#print axioms saved_reopens
 
 end LeanOrigamiTests.Widget

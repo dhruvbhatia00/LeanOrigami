@@ -764,11 +764,44 @@ checks. The panel, RPC, and named-target proof support are implemented; the
 JavaScript interaction checks and Lean integration examples pass. The saved
 half, square-root, and cube-root proofs now pass fresh replay, with only
 ordinary foundational axioms. Interface regressions pass for local target
-names, unsupported targets, and failed proof checks. Live infoview validation
-remains blocked by the locked Mac. Phase 6 is not yet complete; see
+names, unsupported targets, and failed proof checks. Live infoview testing reproduced the half, square-root, and cube-root
+constructions and the three trisection branches. Submission exposed a missing
+auxiliary-declaration naming context in asynchronous theorem environments.
+The repair passes its named-theorem regression, and live half and square-root
+submissions now check and insert their generated proofs successfully. The grid,
+operation guidance, canvas selection, and wheel-scroll repair have been
+observed live. The persistent `origami saved` revision now builds; fresh saved
+half, square-root, and cube-root proofs replay with standard axioms. Live restart,
+reopening, adding a step, saving, switching between constructions, undoing, and
+saving again passed, with line labels visible. Cubic GUI submission and the
+remaining broader interaction checks have not been repeated. The focused
+persistent-editing, line-label, and concise-decimal revision is complete: builds,
+Lean integration regressions, browser tests, proof replay, and the live editing
+cycle passed. Phase 6 is not yet complete; see
 [`docs/phase-6.md`](docs/phase-6.md) for the evidence and remaining checks.
 
 #### 6.1 Exact editing session and display data
+
+**Approved revision (2026-10-12): persistent visual proofs.** Saving must keep
+an `origami` tactic containing the exact construction and its arithmetic
+certificates, rather than replacing it with an opaque-to-the-widget `exact`
+proof. The saved tactic closes the goal and registers its panel before doing
+so. Returning the cursor to it, including after reopening the file, restores
+the exact program, history, and submitted point/coordinate. Undo and new steps
+edit that restored construction; saving replaces the whole tactic with a newly
+checked version. No browser storage or process-local reference is required for
+persistence, and no duplicate recipe language or geometry checker is introduced.
+
+Implementation order: define the saved certificate and its soundness theorem;
+extend tactic elaboration and RPC loading/saving; add visible `L` labels matching
+line references; keep hover values concise (six significant digits without
+trailing zeros); validate separate Lean and JavaScript regressions; exercise
+save, reopen, edit, and save again in the live editor. Include rational and
+irrational saved proofs, invalid certificates, restored final selections, stale
+edits, and an axiom audit. Native evaluation may reconstruct display state only;
+the kernel still checks the saved construction's acceptance and target identity.
+The source block may be folded in the editor. Keep the implementation compact
+and reuse the current exact certificate exporter.
 
 Add an immutable session containing the current program, its exact objects,
 and any pending fold choices. Object references retain their existing meaning:
@@ -809,10 +842,10 @@ insufficient, offer exact-identity selection and explain the limitation.
 missing reference, degenerate inputs, branch selection, and undo. Check that
 precision changes preserve exact selected objects and program contents.
 
-#### 6.2 Persistent proof expression and original-goal matching
+#### 6.2 Persistent construction certificate and original-goal matching
 
-Extend the existing certificate serialization to produce a local proof usable
-inside an ordinary Lean theorem. Reuse the saved field presentations, exact
+Extend the existing certificate serialization to produce an editable saved
+construction usable inside an ordinary Lean theorem. Reuse the saved field presentations, exact
 program serialization, `origami_check`, and `Program.accepts_sound`; do not
 maintain a separate widget-specific exporter with duplicated formulas.
 
@@ -865,13 +898,15 @@ checks clearly distinguished from testing in the live Lean infoview.
 
 Build a collapsible ProofWidgets panel with:
 
-- the target and an SVG construction view with labels;
+- the target and an SVG construction view with labels and a coordinate grid;
 - point/line selection both on the drawing and through an object list;
-- clear input roles for every axiom and for intersections;
+- clear input roles and plain-language descriptions for every operation;
+- visible click-selection guidance and hover coordinates/line equations;
 - distinguishable candidate previews and an explicit commit action;
 - object inspection, construction history, and undo;
-- pan, zoom, reset-view, and precision refinement;
-- final point/coordinate selection, Submit, and checked proof insertion;
+- pan, zoom, reset-view, and precision refinement, with wheel zoom consuming
+  the gesture so that it does not also scroll the infoview;
+- final point/coordinate selection, Submit, and Save construction;
 - concise explanations of unavailable operations and failed submissions.
 
 Keep implementation details such as polynomial-coordinate encodings out of
@@ -879,8 +914,8 @@ the normal construction flow. Exact object references remain available for
 inspection and selection when several rendered objects overlap.
 
 The first integrated milestone is a complete rational example: open a goal,
-perform its construction visually, submit, insert the checked proof, and
-reopen it without widget state. Finish this loop before extending the visual
+perform its construction visually, submit, save the checked tactic, and
+reopen its drawing without previous widget state. Edit and save it again. Finish this loop before extending the visual
 demos to irrational constructions.
 
 #### 6.5 Irrational demos, validation, and audit
@@ -909,7 +944,8 @@ superseded by the finished interface when they no longer serve a separate test.
 **Phase acceptance:** all seven fold operations and intersections are usable
 from the panel; the rational, square-root, and cube-root GUI-to-proof examples
 work; trisection branches can be inspected; source insertion is goal-matched,
-versioned, and independently replayable; invalid or unsupported submissions
+versioned, independently replayable, and visually reopenable/editable after
+closing the goal; invalid or unsupported submissions
 leave the goal open. Complete the documented relevant local checks and record
 the final audit before declaring Phase 6 complete. Any unavailable live-editor
 validation must be reported as a remaining limitation, not silently replaced
