@@ -1,3 +1,4 @@
+import LeanOrigamiDemos.Recipes
 import LeanOrigamiDemos.Visual
 import LeanOrigamiDemos.Widget
 import LeanOrigamiDemos.Subdivision

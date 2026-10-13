@@ -39,7 +39,7 @@ console.log('PASS: implicit-line clipping, vertical lines, precision, and stale-
 // Render the actual component with a small deterministic React/editor adapter.
 // This tests event wiring, not browser layout or the Lean RPC implementation.
 let slots = [], cursor = 0, effects = [], tree, requests = [], edits = [];
-let rpc, editor, gate = 'goal';
+let rpc, editor, gate = 'goal', panelProps = {};
 const listeners = new Map();
 const canvas = {
   addEventListener(name, callback, options) { listeners.set(name, { callback, options }); },
@@ -96,7 +96,7 @@ editor = { api: { async applyEdit(edit) {
 } } };
 function render() {
   cursor = 0;
-  tree = uiModule.namespace.default({ gate: { p: gate }, target: '1 / 2' });
+  tree = uiModule.namespace.default({ gate: { p: gate }, target: '1 / 2', ...panelProps });
   const pending = effects; effects = []; pending.forEach(fn => fn());
 }
 async function flush() { await new Promise(resolve => setImmediate(resolve)); render(); }
@@ -240,3 +240,53 @@ assert.equal(historyRows().length, 0);
 assert.equal(drawn(0).props['data-history-role'], null);
 assert.equal(drawn(0).props.style.opacity, 1);
 console.log('PASS: panel input wiring, exact snapshot selection, undo during submission, and versioned insertion');
+
+// Standalone mode shares the same renderer, but never promises a proved goal.
+panelProps = { workspace: true, recipes: [{ id: 'recipe:midpoint', name: 'Midpoint',
+  parameters: [{ name: 'A', kind: 'point' }, { name: 'B', kind: 'point' }] }] };
+gate = 'workspace'; render(); requests.shift().resolve(start); await flush();
+assert.ok(!selectors().some(n => n.props['aria-label'] === 'Coordinate'));
+assert.ok(selectors().some(n => n.props['aria-label'] === 'Recipe output'));
+selectors()[0].props.onChange({ target: { value: 'recipe:midpoint' } }); render();
+selectors()[1].props.onChange({ target: { value: '0' } }); render();
+selectors()[2].props.onChange({ target: { value: '1' } }); render();
+button('Run recipe').props.onClick(); render();
+const invocation = requests.shift();
+assert.equal(invocation.params.action, 'recipe');
+assert.deepEqual(plain(invocation.params.inputs), [0, 1]);
+const grouped = { ...start, view: { objects: [...start.view.objects, line(2, 0, 1, 0),
+  line(3, 1, 0, 0.5), point(4, 0.5, 0)], steps: 3, choices: [], result: 4,
+  history: [{ description: 'join', inputs: [0, 1], output: 2 },
+    { description: 'bisect', inputs: [0, 1], output: 3 },
+    { description: 'intersect', inputs: [2, 3], output: 4 }],
+  groups: [{ name: 'My recipe', start: 0, count: 3, inputs: [0, 1], output: 4 },
+    { name: 'Midpoint', start: 0, count: 3, inputs: [0, 1], output: 4 }] } };
+invocation.resolve(grouped); await flush();
+assert.equal(selectors().find(n => n.props['aria-label'] === 'Recipe output').props.value, 4);
+assert.ok(walk(tree).some(n => n.tag === 'summary' && n.children.includes('Midpoint (P0, P1) → P4')));
+assert.equal(historyRows().length, 3);
+assert.ok(walk(tree).some(n => n.tag === 'summary' && n.children.includes('My recipe (P0, P1) → P4')));
+walk(tree).find(n => n.tag === 'summary' && n.children.includes('My recipe (P0, P1) → P4')).props.onFocus(); render();
+assert.equal(drawn(0).props['data-history-role'], 'input');
+assert.equal(drawn(1).props['data-history-role'], 'input');
+assert.equal(drawn(4).props['data-history-role'], 'output');
+historyRows()[2].props.onFocus(); render();
+assert.equal(drawn(4).props['data-history-role'], 'output');
+assert.equal(drawn(2).props['data-history-role'], 'input');
+assert.equal(requests.length, 0);
+button('Prepare recipe').props.onClick(); render();
+requests.shift().resolve({ ...grouped, source: 'recipe data', edit: {} }); await flush();
+assert.ok(button('Save recipe'));
+assert.ok(!walk(tree).some(n => n.children.includes('Lean checked this proof against the original goal.')));
+// A pending branch cannot be accidentally invalidated by changing inputs.
+button('Run recipe').props.onClick(); render();
+requests.shift().resolve({ ...grouped, view: { ...grouped.view, running: true,
+  choices: [line(0, 1, 1, 0), line(1, 1, -1, 0)] } }); await flush();
+assert.ok(button('Prepare recipe').props.disabled);
+assert.ok(selectors()[0].props.disabled);
+assert.ok(button('Use fold 1'));
+button('Cancel recipe').props.onClick(); render();
+assert.equal(requests[0].params.action, 'undo');
+requests.shift().resolve(start); await flush();
+assert.ok(!walk(tree).some(n => n.children.includes('Cancel recipe')));
+console.log('PASS: standalone recipe controls, invocation arguments, grouped history, and branch cancellation');

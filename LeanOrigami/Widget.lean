@@ -1,16 +1,19 @@
 import LeanOrigami.Widget.Saved
 import LeanOrigami.Widget.Goal
+import LeanOrigami.Widget.Workspace
 import ProofWidgets.Component.Panel.Basic
 import ProofWidgets.Component.MakeEditLink
 
 /-!
-# Goal-directed origami construction panel
+# Proof and recipe construction panels
 
 `origami` starts an editor; `origami saved (...)` also proves its goal and
 restores the saved construction when reopened. Immutable RPC snapshots
 carry exact programs; the browser receives only references and approximations.
 Submission elaborates and kernel-checks a persistent proof against the captured
 goal before returning a versioned edit. The widget is not a proof oracle.
+`origami_recipe` uses the same panel outside proofs, saving parameterized
+operations whose exact results are discovered again for each invocation.
 -/
 
 namespace LeanOrigami.Widget
@@ -18,17 +21,20 @@ open Lean Meta Elab Tactic Server ProofWidgets
 
 meta section
 
-/-- The proof context and source location that opened this panel. -/
-structure GoalContext where
+/-- The source context of either a proof editor or a standalone recipe editor. -/
+structure PanelContext where
   id : Name
   context : ContextInfo
   locals : LocalContext
-  goal : Expr
+  goal : Option Expr := none
   range : Lsp.Range
   saved : Option Expr := none
+  workspace : Option WorkspaceContext := none
+  library : Array NamedRecipe := #[]
+  groups : Array RecipeGroup := #[]
   deriving TypeName
 
-/-- A session is valid only for its original goal and source version. -/
+/-- A session is valid only for its original editor and source version. -/
 structure Snapshot where
   gate : Name
   document : DocumentMeta
@@ -37,14 +43,17 @@ structure Snapshot where
 
 /-- Browser properties contain an opaque context reference, never proof evidence. -/
 structure PanelProps where
-  gate : WithRpcRef GoalContext
+  gate : WithRpcRef PanelContext
   target : String
   saved : Bool := false
+  workspace : Bool := false
+  recipes : Array RecipeMenuItem := #[]
+  parameters : Array RecipeParameter := #[]
   deriving RpcEncodable
 
 /-- Every request refers to the exact preview snapshot it operates on. -/
 structure Interaction where
-  gate : WithRpcRef GoalContext
+  gate : WithRpcRef PanelContext
   session : Option (WithRpcRef Snapshot) := none
   action : String
   operation : String := "1"
@@ -98,11 +107,12 @@ def checkProof (goal : Expr) (source : String) : MetaM Unit := do
       unless [``propext, ``Classical.choice, ``Quot.sound].contains dependency do
         throwError "The exported proof depends on unsupported axiom {dependency}."
 
-private def submission (gate : GoalContext) (session : Session) (point : Nat)
+private def submission (gate : PanelContext) (session : Session) (point : Nat)
     (coordinate : Coordinate) : RequestM String := do
+  let some goal := gate.goal | throw (.invalidParams "This workspace has no proof goal.")
   let target ← result (session.selected point coordinate)
   let kind ← try
-      gate.context.runMetaM gate.locals (classifyTarget gate.goal.appArg!)
+      gate.context.runMetaM gate.locals (classifyTarget goal.appArg!)
     catch _ => throw (.invalidParams
       "Submission supports rational goals, Real.sqrt q, and q ^ (1 / 3), with nonnegative rational q for roots.")
   -- This fast feedback is untrusted. The identity is proved again below.
@@ -116,7 +126,7 @@ private def submission (gate : GoalContext) (session : Session) (point : Nat)
   let saved := savedSource certificate point coordinate
   try
     gate.context.runMetaM gate.locals
-      (checkProof gate.goal s!"LeanOrigami.Widget.SavedConstruction.sound ({saved})")
+      (checkProof goal s!"LeanOrigami.Widget.SavedConstruction.sound ({saved})")
   catch error => throw (.invalidParams s!"This coordinate could not close the goal. {error.message}")
   return saved
 
@@ -126,19 +136,22 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
   let document := (← RequestM.readDoc).meta
   let gate := request.gate.val
   unless document.text.source == gate.context.fileMap.source do
-    throw (.invalidParams "The source changed. Reopen the construction at the current goal.")
+    throw (.invalidParams "The source changed. Reopen the construction at its current source location.")
   let mut point := request.point
   let mut coordinate := request.coordinate
   let snapshot ← match request.session with
     | none =>
       unless request.action == "start" do throw (.invalidParams "Open a construction first.")
       let mut session : Session := {}
-      if let some saved := gate.saved then
+      if let some workspace := gate.workspace then
+        session ← result (← gate.context.runMetaM gate.locals (openWorkspace workspace))
+        point := session.result.getD 0
+      else if let some saved := gate.saved then
         let restored ← try
             gate.context.runMetaM gate.locals (reopen saved)
           catch error => throw (.invalidParams s!"Could not reopen this construction: {error.message}")
         let (loaded, selected, axis) ← result restored
-        session := loaded
+        session := { loaded with groups := gate.groups }
         point := selected
         coordinate := match axis with | .x => "x" | .y => "y"
       pure { gate := gate.id, document, session }
@@ -146,11 +159,13 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
       let saved := reference.val
       unless saved.gate == gate.id && saved.document.uri == document.uri &&
           saved.document.version == document.version do
-        throw (.invalidParams "This construction belongs to an earlier goal or source version.")
+        throw (.invalidParams "This construction belongs to an earlier editor or source version.")
       pure saved
   let mut session := snapshot.session
   let mut source := ""
   let mut edit := none
+  if session.running.isSome && !(["start", "render", "choose", "undo"].contains request.action) then
+    throw (.invalidParams "Finish or cancel the current recipe first.")
   match request.action with
   | "start" | "render" => pure ()
   | "preview" =>
@@ -162,15 +177,28 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     let [left, right] := request.inputs.toList
       | throw (.invalidParams "Select two lines to intersect.")
     session ← result (session.intersect left right)
+  | "recipe" =>
+    let some recipe := gate.library.find? (·.id == request.operation)
+      | throw (.invalidParams "This recipe is not available in the current context.")
+    session ← result (session.useRecipe recipe.name recipe.template request.inputs)
   | "undo" => session ← result session.undo
   | "submit" =>
-    let axis ← match request.coordinate with
-      | "x" => pure Coordinate.x
-      | "y" => pure Coordinate.y
-      | _ => throw (.invalidParams "Choose the x or y coordinate.")
-    source ← submission gate session request.point axis
+    let replacement ← match gate.workspace with
+      | some workspace => do
+        let recipe ← result (session.template workspace.parameters request.point)
+        source := recipe.source
+        pure (workspace.sourcePrefix ++ " saved (" ++ source ++ ")")
+      | none => do
+        let axis ← match request.coordinate with
+          | "x" => pure Coordinate.x
+          | "y" => pure Coordinate.y
+          | _ => throw (.invalidParams "Choose the x or y coordinate.")
+        source ← submission gate session request.point axis
+        let history := if session.groups.isEmpty then "" else
+          "history (#[" ++ String.intercalate ", " (session.groups.toList.map RecipeGroup.source) ++ "]) "
+        pure ("origami " ++ history ++ "saved (" ++ source ++ ")")
     let indent := String.ofList (List.replicate gate.range.start.character ' ')
-    let replacement := "origami saved (" ++ source.replace "\n" ("\n" ++ indent) ++ ")"
+    let replacement := replacement.replace "\n" ("\n" ++ indent)
     edit := some (MakeEditLinkProps.ofReplaceRange document gate.range replacement).edit
   | _ => throw (.invalidParams "Unknown construction action.")
   return { session := ← WithRpcRef.mk { snapshot with session }
@@ -181,18 +209,37 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
 def ConstructionPanel : Component PanelProps where
   javascript := include_str ".." / "widget" / "construction.js"
 
-/-- Open an unfinished construction, or check and display a saved one. The
-panel is attached to the tactic even when its certificate closes the goal. -/
-syntax (name := origamiPanel) "origami" (ppSpace &"saved" ppSpace term)? : tactic
+/-- Attach the same panel to a tactic or a declaration command. -/
+private def registerPanel (stx : Syntax) (target : String) (goal saved : Option Expr)
+    (workspace : Option WorkspaceContext) (groups : Array RecipeGroup := #[])
+    (savedRecipe : Bool := false) : Term.TermElabM Unit := do
+  let some range := (← getFileMap).lspRangeOfStx? stx
+    | throwError "origami needs an editable source location."
+  let library ← recipeLibrary
+  let gate : PanelContext := {
+    id := ← mkFreshId
+    context := { ← CommandContextInfo.save with }
+    locals := ← getLCtx
+    goal, range, saved, workspace, library, groups }
+  let props : PanelProps := {
+    gate := ← WithRpcRef.mk gate
+    target, saved := saved.isSome || savedRecipe
+    workspace := workspace.isSome
+    parameters := workspace.map (·.parameters) |>.getD #[]
+    recipes := library.map fun r => ⟨r.id, r.name, r.template.parameters⟩ }
+  Lean.Widget.savePanelWidgetInfo ConstructionPanel.javascriptHash (rpcEncode props) stx
+
+/-- Open or prove a saved construction. History annotations are presentation
+metadata; the certificate still checks only the expanded exact program. -/
+syntax (name := origamiPanel) "origami" (ppSpace &"history" ppSpace "(" term ")")?
+  (ppSpace &"saved" ppSpace term)? : tactic
 
 @[tactic origamiPanel]
 def elabOrigami : Tactic
-  | stx@`(tactic| origami $[saved $source:term]?) => withMainContext do
+  | stx@`(tactic| origami $[history ($annotations:term)]? $[saved $source:term]?) => withMainContext do
     let goal ← instantiateMVars (← getMainTarget)
     unless goal.isAppOfArity ``ConstructibleNumber 1 do
       throwError "origami requires a ConstructibleNumber goal."
-    let some range := (← getFileMap).lspRangeOfStx? stx
-      | throwError "origami needs an editable source location."
     let saved ← source.mapM fun source => do
       let value ← Term.elabTermEnsuringType source (mkApp (mkConst ``SavedConstruction) goal.appArg!)
       Term.synthesizeSyntheticMVarsNoPostponing
@@ -200,16 +247,14 @@ def elabOrigami : Tactic
       if value.hasMVar || value.hasSorry then
         throwError "The saved construction has incomplete certificates."
       return value
-    let gate : GoalContext := {
-      id := ← mkFreshId
-      context := { ← CommandContextInfo.save with }
-      locals := ← getLCtx
-      goal, range, saved }
-    let props : PanelProps := {
-      gate := ← WithRpcRef.mk gate
-      target := (← ppExpr goal.appArg!).pretty
-      saved := saved.isSome }
-    Lean.Widget.savePanelWidgetInfo ConstructionPanel.javascriptHash (rpcEncode props) stx
+    let groups ← match annotations with
+      | none => pure #[]
+      | some annotations => do
+        let value ← Term.elabTermEnsuringType annotations
+          (mkApp (mkConst ``Array [0]) (mkConst ``RecipeGroup))
+        Term.synthesizeSyntheticMVarsNoPostponing
+        readGroups (← instantiateMVars value)
+    registerPanel stx (← ppExpr goal.appArg!).pretty (some goal) saved none groups
     if let some saved := saved then
       let proof ← mkAppM ``SavedConstruction.sound #[saved]
       (← getMainGoal).assign proof
@@ -218,6 +263,44 @@ def elabOrigami : Tactic
 
 -- Bare `origami` intentionally leaves the proof state unchanged.
 #allow_unused_tactic! origamiPanel
+
+/-- Define and visually edit a recipe without a theorem. Sample objects are
+parameters; only a saved template is registered as an available operation. -/
+syntax (name := origamiRecipeCommand) "origami_recipe " ident ppSpace &"samples" ppSpace "(" term ")"
+  (ppSpace &"saved" ppSpace term)? : command
+
+@[command_elab origamiRecipeCommand]
+def elabRecipeCommand : Command.CommandElab
+  | stx@`(origami_recipe $name:ident samples ($sampleTerm:term) $[saved $source:term]?) => do
+    let (sampleExpr, parameters) ← Command.runTermElabM fun _ => do
+      let sampleExpr ← Term.elabTermEnsuringType sampleTerm (mkConst ``RecipeSamples)
+      Term.synthesizeSyntheticMVarsNoPostponing
+      let sampleExpr ← instantiateMVars sampleExpr
+      let values ← readSamples sampleExpr
+      let parameters := values.toArray.map fun (name, value) =>
+        RecipeParameter.mk name (objectKind value)
+      let draft : RecipeTemplate := { parameters }
+      match draft.validate with
+      | .error message => throwError "{message}"
+      | .ok _ => pure ()
+      return (sampleExpr, parameters)
+    let body ← match source with
+      | some source => pure source
+      | none =>
+        let draft : RecipeTemplate := { parameters }
+        match Parser.runParserCategory (← getEnv) `term draft.source with
+        | .ok body => pure ⟨body⟩
+        | .error message => throwError "{message}"
+    Command.elabCommand (← `(def $name : LeanOrigami.Widget.RecipeTemplate := $body))
+    if source.isSome then Command.elabCommand (← `(attribute [«origami_recipe»] $name))
+    Command.runTermElabM fun _ => do
+      let recipe ← Term.elabTerm name (some (mkConst ``RecipeTemplate))
+      let workspace : WorkspaceContext := {
+        sourcePrefix := "origami_recipe " ++ name.raw.reprint.getD name.getId.toString ++
+          " samples (" ++ sampleTerm.raw.reprint.getD "" ++ ")"
+        samples := sampleExpr, recipe, parameters }
+      registerPanel stx name.getId.toString none none (some workspace) #[] source.isSome
+  | _ => throwUnsupportedSyntax
 
 end
 end LeanOrigami.Widget

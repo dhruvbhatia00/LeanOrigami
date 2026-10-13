@@ -77,32 +77,40 @@ export default function ConstructionPanel(props) {
   const [previewValid, setPreviewValid] = React.useState(false);
   const generation = React.useRef(0), drag = React.useRef(null), canvas = React.useRef(null);
   const gateKey = JSON.stringify(props.gate);
-  const spec = operations.find(o => o[0] === operation), box = bounds(viewport);
+  const recipeOperations = (props.recipes ?? []).map(r => [r.id, `Recipe · ${r.name}`,
+    r.parameters.map(p => p.name), r.parameters.map(p => p.kind),
+    'Run this recipe on the selected inputs. Multiple folds will ask for a fresh choice.']);
+  const availableOperations = [...operations, ...recipeOperations];
+  const spec = availableOperations.find(o => o[0] === operation) ?? operations[0], box = bounds(viewport);
   const objects = scene?.view.objects ?? [], choices = previewValid ? (scene?.view.choices ?? []) : [];
-  const historyStep = scene?.view.history?.[historyIndex] ?? null;
+  const selectedGroup = typeof historyIndex === 'string' ? scene?.view.groups?.[Number(historyIndex.slice(7))] : null;
+  const historyStep = selectedGroup ? { ...selectedGroup, description: selectedGroup.name } :
+    scene?.view.history?.[historyIndex] ?? null;
   const objectLabel = index => `${objects.find(o => o.index === index)?.kind === 'point' ? 'P' : 'L'}${index}`;
   const bits = precisionFor(viewport.width, extraBits);
   function install(result) { sceneRef.current = result; setScene(result); setHistoryIndex(null); }
   async function request(action, overrides = {}) {
     const token = newGeneration(generation);
-    setBusy(action === 'submit' ? 'Checking the complete proof…' : 'Computing…');
+    setBusy(action === 'submit' ? (props.workspace ? 'Preparing recipe…' : 'Checking the complete proof…') : 'Computing…');
     setMessage(''); setSubmission(null);
     try {
       const response = await rpc.call('LeanOrigami.Widget.interact', {
         gate: props.gate, session: sceneRef.current?.session ?? null,
-        action, operation, inputs: ['preview', 'intersect'].includes(action) ? inputs : [],
+        action, operation, inputs: ['preview', 'intersect', 'recipe'].includes(action) ? inputs : [],
         choice: 0, point: finalPoint, coordinate, bits, ...overrides,
       });
       if (!isCurrent(generation, token)) return;
       install(response);
-      if (action === 'preview') setPreviewValid(true);
-      else if (['start', 'choose', 'intersect', 'undo'].includes(action)) {
+      if (response.view.running || action === 'preview') setPreviewValid(true);
+      else if (['start', 'choose', 'intersect', 'undo', 'recipe'].includes(action)) {
         setPreviewValid(false); setInputs([]); setActive(0); setHover(null); setInspection('');
         if (action === 'start') {
           setFinalPoint(response.point ?? 1); setCoordinate(response.coordinate ?? 'x');
           setViewport(initialViewport);
         }
         if (action === 'intersect') setFinalPoint(response.view.objects.at(-1).index);
+        if (response.view.result != null && (props.workspace || response.view.objects.some(o =>
+          o.index === response.view.result && o.kind === 'point'))) setFinalPoint(response.view.result);
       }
       if (response.edit) setSubmission(response);
     } catch (error) {
@@ -136,6 +144,7 @@ export default function ConstructionPanel(props) {
     if (sceneRef.current) install({ ...sceneRef.current, view: { ...sceneRef.current.view, choices: [] } });
   }
   function select(index, kind) {
+    if (busy || scene?.view.running) return;
     if (spec[3][active] !== kind) { setMessage(`Choose a ${spec[3][active]} for ${spec[2][active]}.`); return; }
     invalidate(); setInputs(old => { const next = [...old]; next[active] = index; return next; });
     setActive(Math.min(active + 1, spec[2].length - 1));
@@ -192,11 +201,41 @@ export default function ConstructionPanel(props) {
     }),
   ];
   const button = (label, onClick, disabled = false) => e('button', { type: 'button', onClick, disabled, style: { margin: '3px' } }, label);
+  function historyRow(step, i) {
+    return e('li', {
+      key: i, tabIndex: 0, onMouseMove: () => setHistoryIndex(i),
+      onMouseLeave: () => setHistoryIndex(current => current === i ? null : current),
+      onFocus: () => setHistoryIndex(i),
+      onBlur: () => setHistoryIndex(current => current === i ? null : current),
+      style: { padding: '4px', background: historyIndex === i ? 'var(--vscode-list-hoverBackground)' : undefined },
+    }, `${step.description} → ${objectLabel(step.output)}`);
+  }
+  function historyRows(start = 0, end = scene?.view.history?.length ?? 0, excluded = []) {
+    const history = scene?.view.history ?? [], groups = scene?.view.groups ?? [], rows = [];
+    for (let i = start; i < end;) {
+      const group = groups.filter(g => !excluded.includes(g) && g.start === i && g.count > 0 && i + g.count <= end)
+        .sort((a, b) => b.count - a.count)[0];
+      if (group) {
+        const groupKey = `recipe:${groups.indexOf(group)}`;
+        rows.push(e('li', { key: `group-${i}` }, e('details', null,
+          e('summary', {
+            onMouseMove: () => setHistoryIndex(groupKey), onFocus: () => setHistoryIndex(groupKey),
+            onMouseLeave: () => setHistoryIndex(current => current === groupKey ? null : current),
+            onBlur: () => setHistoryIndex(current => current === groupKey ? null : current),
+          }, `${group.name} (${group.inputs.map(objectLabel).join(', ')}) → ${objectLabel(group.output)}`),
+          e('ol', null, ...historyRows(i, i + group.count, [...excluded, group])))));
+        i += group.count;
+      } else { rows.push(historyRow(history[i], i)); i++; }
+    }
+    return rows;
+  }
   const unresolvedDisplay = [...objects, ...choices].some(o => needsRefinement(o, viewport));
   return e('details', { open: true, style: { maxWidth: '760px' } },
     e('summary', null, 'Origami construction'),
-    e('p', null, `Goal: ${props.target}`),
-    props.saved && e('p', null, 'Saved construction. Changes are drafts until you save them.'),
+    e('p', null, props.workspace ? `Recipe workspace: ${props.target}` : `Goal: ${props.target}`),
+    props.workspace && e('p', null, 'Sample inputs are parameters. Saving a recipe does not prove a theorem.'),
+    props.workspace && e('p', null, (props.parameters ?? []).map((p, i) => `${p.name}: ${p.kind === 'point' ? 'P' : 'L'}${i}`).join(' · ')),
+    props.saved && e('p', null, props.workspace ? 'Saved recipe. Changes are drafts until you save them.' : 'Saved construction. Changes are drafts until you save them.'),
     e('svg', { ref: canvas, viewBox: `0 0 ${WIDTH} ${HEIGHT}`, role: 'img', 'aria-label': 'Origami construction canvas',
       style: { width: '100%', border: '1px solid currentColor', touchAction: 'none', background: 'var(--vscode-editor-background)' },
       onPointerDown: ev => { if (ev.target === ev.currentTarget) { drag.current = { x: ev.clientX, y: ev.clientY, viewport }; ev.currentTarget.setPointerCapture(ev.pointerId); } },
@@ -209,19 +248,12 @@ export default function ConstructionPanel(props) {
       ...objects.filter(o => o.kind === 'point' && o.index !== historyStep?.output).map(o => draw(o, false)),
       ...objects.filter(o => o.index === historyStep?.output).map(o => draw(o, false))),
     e('p', { role: 'status', style: { height: '4em', overflowY: 'auto', margin: '6px 0', fontSize: '0.9em' } },
-      historyStep ? `Step ${historyIndex + 1}: ${historyStep.description}. Inputs (blue): ${historyStep.inputs.map(objectLabel).join(', ')}. Output (orange): ${objectLabel(historyStep.output)}.` :
+      historyStep ? `${selectedGroup ? "Recipe" : `Step ${historyIndex + 1}`}: ${historyStep.description}. Inputs (blue): ${historyStep.inputs.map(objectLabel).join(', ')}. Output (orange): ${objectLabel(historyStep.output)}.` :
       inspection || 'Hover over a point or line to inspect its approximate coordinates or equation.'),
     e('details', { onToggle: ev => { if (!ev.currentTarget.open) setHistoryIndex(null); } },
       e('summary', null, 'Construction history'),
       e('p', null, 'Hover over a step or focus it with Tab to highlight its inputs and result.'),
-      e('ol', { style: { maxHeight: '160px', overflowY: 'auto', margin: '6px 0' } }, ...(scene?.view.history ?? []).map((step, i) => e('li', {
-        // Pointer movement, rather than entry caused by scrolling, selects a row.
-        key: i, tabIndex: 0, onMouseMove: () => setHistoryIndex(i),
-        onMouseLeave: () => setHistoryIndex(current => current === i ? null : current),
-        onFocus: () => setHistoryIndex(i),
-        onBlur: () => setHistoryIndex(current => current === i ? null : current),
-        style: { padding: '4px', background: historyIndex === i ? 'var(--vscode-list-hoverBackground)' : undefined },
-      }, `${step.description} → ${objectLabel(step.output)}`)))),
+      e('ol', { style: { maxHeight: '200px', overflowY: 'auto', margin: '6px 0' } }, ...historyRows())),
     e('div', null,
       button('Zoom in', () => setViewport(v => ({ ...v, width: Math.max(1e-12, v.width / 2) }))),
       button('Zoom out', () => setViewport(v => ({ ...v, width: Math.min(1e12, v.width * 2) }))),
@@ -229,17 +261,20 @@ export default function ConstructionPanel(props) {
       button('Refine display', () => setExtraBits(b => Math.min(480, b + 32)), !!busy),
       button('Undo', () => request('undo'), !scene || scene.view.steps === 0)),
     unresolvedDisplay && e('p', { role: 'status' }, 'Some objects need more display precision. Refine or use the exact object list.'),
-    e('label', null, 'Operation ', e('select', { value: operation, onChange: ev => { invalidate(); setOperation(ev.target.value); setInputs([]); setActive(0); } },
-      ...operations.map(o => e('option', { key: o[0], value: o[0] }, o[1])))),
+    e('label', null, 'Operation ', e('select', { value: operation, disabled: !!busy || !!scene?.view.running, onChange: ev => { invalidate(); setOperation(ev.target.value); setInputs([]); setActive(0); } },
+      ...availableOperations.map(o => e('option', { key: o[0], value: o[0] }, o[1])))),
     e('p', { style: { margin: '6px 0' } }, spec[4]),
     e('p', { style: { margin: '6px 0', fontSize: '0.9em' } },
       `Click a ${spec[3][active]} on the drawing for “${spec[2][active]}”, or use the dropdowns. Drag empty space to pan; scroll to zoom.`),
     ...spec[2].map((role, i) => e('label', { key: i, style: { display: 'block', margin: '5px 0' } }, `${role} `,
-      e('select', { value: inputs[i] ?? '', onFocus: () => setActive(i), onChange: ev => { invalidate(); setInputs(old => { const next = [...old]; next[i] = Number(ev.target.value); return next; }); } },
+      e('select', { value: inputs[i] ?? '', disabled: !!busy || !!scene?.view.running, onFocus: () => setActive(i), onChange: ev => { invalidate(); setInputs(old => { const next = [...old]; next[i] = Number(ev.target.value); return next; }); } },
         e('option', { value: '', disabled: true }, `Select a ${spec[3][i]}`),
         ...objects.filter(o => o.kind === spec[3][i]).map(o => e('option', { key: o.index, value: o.index }, `${o.kind} ${o.index}`))))),
-    button(operation === 'intersection' ? 'Add intersection' : 'Preview folds', () => request(operation === 'intersection' ? 'intersect' : 'preview'),
-      !!busy || spec[2].some((_, i) => inputs[i] === undefined)),
+    button(operation.startsWith('recipe:') ? 'Run recipe' : operation === 'intersection' ? 'Add intersection' : 'Preview folds',
+      () => request(operation.startsWith('recipe:') ? 'recipe' : operation === 'intersection' ? 'intersect' : 'preview'),
+      !!busy || !!scene?.view.running || spec[2].some((_, i) => inputs[i] === undefined)),
+    scene?.view.running && e('p', null, 'Recipe paused: choose a fold below, or cancel the whole call.',
+      button('Cancel recipe', () => request('undo'), !!busy)),
     choices.length > 0 && e('div', null, e('p', null, `${choices.length} exact choice(s). Select by number if previews overlap.`),
       ...choices.map(o => e('div', { key: o.index, onMouseEnter: () => setHover(o.index), onMouseLeave: () => setHover(null) },
         button(`Use fold ${o.index + 1}`, () => request('choose', { choice: o.index }), !!busy),
@@ -248,16 +283,16 @@ export default function ConstructionPanel(props) {
       e('ul', null, ...objects.map(o => e('li', { key: o.index },
         button(`${o.kind} ${o.index}`, () => select(o.index, o.kind)),
         e('span', null, describeObject(o)))))),
-    e('fieldset', null, e('legend', null, 'Submit a coordinate'),
-      e('select', { 'aria-label': 'Final point', value: objects.some(o => o.kind === 'point' && o.index === finalPoint) ? finalPoint : '', onChange: ev => { invalidate(); setFinalPoint(Number(ev.target.value)); } },
-        e('option', { value: '', disabled: true }, 'Select a point'),
-        ...objects.filter(o => o.kind === 'point').map(o => e('option', { key: o.index, value: o.index }, `Point ${o.index}`))),
-      e('select', { 'aria-label': 'Coordinate', value: coordinate, onChange: ev => { invalidate(); setCoordinate(ev.target.value); } },
+    e('fieldset', null, e('legend', null, props.workspace ? 'Recipe output' : 'Submit a coordinate'),
+      e('select', { 'aria-label': props.workspace ? 'Recipe output' : 'Final point', disabled: !!busy || !!scene?.view.running, value: objects.some(o => (props.workspace || o.kind === 'point') && o.index === finalPoint) ? finalPoint : '', onChange: ev => { invalidate(); setFinalPoint(Number(ev.target.value)); } },
+        e('option', { value: '', disabled: true }, props.workspace ? 'Select an object' : 'Select a point'),
+        ...objects.filter(o => props.workspace || o.kind === 'point').map(o => e('option', { key: o.index, value: o.index }, `${o.kind} ${o.index}`))),
+      !props.workspace && e('select', { 'aria-label': 'Coordinate', disabled: !!busy || !!scene?.view.running, value: coordinate, onChange: ev => { invalidate(); setCoordinate(ev.target.value); } },
         e('option', { value: 'x' }, 'x coordinate'), e('option', { value: 'y' }, 'y coordinate')),
-      button('Submit', () => request('submit'), !!busy || !scene || !objects.some(o => o.kind === 'point' && o.index === finalPoint))),
+      button(props.workspace ? 'Prepare recipe' : 'Submit', () => request('submit'), !!busy || !!scene?.view.running || !scene || !objects.some(o => (props.workspace || o.kind === 'point') && o.index === finalPoint))),
     busy && e('p', { role: 'status' }, busy), message && e('p', { role: 'alert' }, message),
-    submission && e('div', null, e('p', null, 'Lean checked this proof against the original goal.'),
-      button('Save construction', async () => { try {
+    submission && e('div', null, e('p', null, props.workspace ? 'Recipe references and input kinds checked. This is a reusable construction, not a theorem about its output.' : 'Lean checked this proof against the original goal.'),
+      button(props.workspace ? 'Save recipe' : 'Save construction', async () => { try {
         await editor.api.applyEdit({ documentChanges: [submission.edit] });
         setSubmission(null);
       } catch (err) { setMessage(`The source changed or saving failed: ${String(err)}`); } }),

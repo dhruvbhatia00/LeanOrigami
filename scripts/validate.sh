@@ -24,3 +24,7 @@ lake lean .lake/exact/Replay.lean
 node --experimental-vm-modules scripts/widget-construction-test.mjs
 lake lean LeanOrigamiTests/WidgetRuntime.lean -- --run LeanOrigamiTests/WidgetRuntime.lean
 lake lean .lake/phase6/Saved.lean
+
+# Parameterized recipes: execution on new inputs and independent saved-proof replay.
+lake lean LeanOrigamiTests/RecipeRuntime.lean -- --run LeanOrigamiTests/RecipeRuntime.lean
+lake lean .lake/recipes/Replay.lean

@@ -1,7 +1,8 @@
 # Constructing a proof visually
 
-Phase 6 is under development. The procedures below describe the intended
-interface; the checkpoint audit records which checks have actually passed.
+The checkpoint audit in `docs/phase-6.md` records the completed checks and
+remaining release checks. For construction outside a theorem and reusable
+operations, see [Reusable visual recipes](recipes.md).
 
 To view a completed construction, open `LeanOrigamiDemos/Visual.lean` and put
 your cursor on `origami saved` inside `half` or `squareRoot`. The panel restores

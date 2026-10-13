@@ -961,6 +961,59 @@ the final audit before declaring Phase 6 complete. Any unavailable live-editor
 validation must be reported as a remaining limitation, not silently replaced
 by a weaker test or treated as completed acceptance.
 
+### Phase 6R — Standalone workspaces and reusable visual recipes
+
+**Completed 2026-10-13.** Standalone authoring, named recipe calls, nested
+history, current-input branch choices, and GUI-to-kernel replay are implemented.
+The focused tests and live save/reopen checks passed; see
+[the checkpoint audit](docs/phase-6-recipes.md) and
+[the recipe guide](docs/recipes.md). This does not close the older Phase 6
+release checks or start Phase 7.
+
+**Approved extension (2026-10-12), before Phase 7.** Let users build outside
+a theorem, save a parameterized recipe, and invoke it from the proof widget.
+An exact saved construction and a reusable recipe are different: recipes
+record operations and references, then recompute geometry for each invocation.
+The existing concrete `Recipe` API remains useful for certified arithmetic;
+do not treat its stored coordinates as parameterized geometry.
+
+1. Define a small recipe format with named point/line parameters, primitive
+   fold/intersection operations, and a selected point or line output. Validate
+   reference order, argument kinds, and output existence. Preserve nested
+   recipe calls as inspectable groups while expanding to ordinary primitives.
+2. Execute recipes on exact inputs. Automatically advance unique operations;
+   pause at multiple solutions for a fresh user choice. Never generalize a
+   recorded candidate index. Report degenerate inputs clearly, support
+   cancellation, and keep failed calls from corrupting the prior session.
+3. Provide a Lean command opening the existing canvas without a theorem.
+   Named sample inputs are parameters, not claims of constructibility. Saving
+   writes a persistent recipe declaration; reopening permits visual editing.
+   Samples illustrate the recipe and do not enter its generalized steps.
+4. Expose named recipes in the tactic's operation menu, including midpoint.
+   A call is one expandable history entry; its primitives remain inspectable.
+   Retain groups across source save/reopen and certify the expanded exact
+   program through the existing proof exporter. Do not add trusted rules.
+5. Add focused separate tests for changed inputs, mixed point/line parameters,
+   nested calls, branches, wrong kinds, missing/forward references,
+   degeneracy, undo/cancel, save/reopen, and a GUI-to-kernel proof. Include a
+   readable midpoint workspace demo and document creation and invocation.
+
+**Acceptance:** a user can create/edit a named recipe without a proof, use it
+on different inputs in another recipe or a proof, inspect its primitive steps,
+and save/replay the resulting proof independently of widget state. Multi-root
+choices are made for the current inputs. Approximate display and arbitrary
+workspace samples never establish constructibility. Existing widget tests
+remain valid, and a focused live GUI check covers authoring and invocation.
+
+**Scope:** this checkpoint establishes reusable recipes with explicit runtime
+failures and interactive branch selection. General symbolic specifications
+(e.g. a theorem that a user recipe always returns a midpoint), automatic
+conditional alternatives, and exact predicate-based branch selectors extend
+this interface later. Standard arithmetic, roots, projections, and coordinate
+transfer recipes are the planned next library additions; start with midpoint
+to validate the complete workflow, reusing existing correctness results where
+applicable. Phase 9 retains the general symbolic-proof work.
+
 ### Phase 7 — Package the main theory and release
 
 Package the arithmetic results as a subfield of `ℝ`, and expose clean

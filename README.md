@@ -1,13 +1,16 @@
 # LeanOrigami
 
 A fresh Lean formalization of origami constructions, with exact algebraic
-computation and a planned proof-producing graphical interface.
+computation and an editable, proof-producing graphical interface.
 
 The restart follows [PLAN.md](PLAN.md) and [AGENTS.md](AGENTS.md). The library
 provides exact real algebraic coordinates, normalized lines, reflection,
 intersection, and the seven fold relations. Replayable construction programs
 now certify all seven rules and unique intersections. The library includes exact candidate discovery, arithmetic, and quadratic/cubic
-root constructions. Phase 5 adds named program assembly, acceptance certificates, and saved proof artifacts. The origami GUI is a later phase.
+root constructions. The text interface provides named program assembly, acceptance certificates, and saved proof artifacts.
+The [visual editor](docs/widget.md) saves constructions inside Lean proofs.
+[Reusable recipes](docs/recipes.md) also have a standalone visual workspace and
+can be invoked on new inputs from the proof editor.
 
 ## Setup
 
