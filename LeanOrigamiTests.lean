@@ -1,4 +1,5 @@
 import LeanOrigamiTests.Widget
+import LeanOrigamiTests.WidgetHistory
 import LeanOrigamiTests.Feasibility
 import LeanOrigamiTests.Geometry
 import LeanOrigamiTests.Construction

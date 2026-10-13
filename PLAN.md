@@ -780,6 +780,16 @@ Lean integration regressions, browser tests, proof replay, and the live editing
 cycle passed. Phase 6 is not yet complete; see
 [`docs/phase-6.md`](docs/phase-6.md) for the evidence and remaining checks.
 
+**History inspection revision:** hovering or keyboard-focusing a construction
+history step highlights its exact input references in blue and its output in
+orange, including intersections. Other objects fade during inspection. Leaving
+the step restores ordinary editing; inspection must not change the program,
+input selections, or submitted coordinate. Send structured references with the
+history rather than parsing its prose. Cover restored constructions, overlapping
+inputs/outputs, and clearing inspection on undo or switching proofs.
+Completed: focused Lean and browser regressions, targeted widget build, and
+live fold/intersection inspection and keyboard scrolling passed.
+
 #### 6.1 Exact editing session and display data
 
 **Approved revision (2026-10-12): persistent visual proofs.** Saving must keep

@@ -73,13 +73,16 @@ export default function ConstructionPanel(props) {
   const [message, setMessage] = React.useState(''), [submission, setSubmission] = React.useState(null);
   const [finalPoint, setFinalPoint] = React.useState(1), [coordinate, setCoordinate] = React.useState('x');
   const [hover, setHover] = React.useState(null), [inspection, setInspection] = React.useState('');
+  const [historyIndex, setHistoryIndex] = React.useState(null);
   const [previewValid, setPreviewValid] = React.useState(false);
   const generation = React.useRef(0), drag = React.useRef(null), canvas = React.useRef(null);
   const gateKey = JSON.stringify(props.gate);
   const spec = operations.find(o => o[0] === operation), box = bounds(viewport);
   const objects = scene?.view.objects ?? [], choices = previewValid ? (scene?.view.choices ?? []) : [];
+  const historyStep = scene?.view.history?.[historyIndex] ?? null;
+  const objectLabel = index => `${objects.find(o => o.index === index)?.kind === 'point' ? 'P' : 'L'}${index}`;
   const bits = precisionFor(viewport.width, extraBits);
-  function install(result) { sceneRef.current = result; setScene(result); }
+  function install(result) { sceneRef.current = result; setScene(result); setHistoryIndex(null); }
   async function request(action, overrides = {}) {
     const token = newGeneration(generation);
     setBusy(action === 'submit' ? 'Checking the complete proof…' : 'Computing…');
@@ -129,7 +132,7 @@ export default function ConstructionPanel(props) {
     if (sceneRef.current && !busy) request('render');
   }, [bits]);
   function invalidate() {
-    newGeneration(generation); setBusy(''); setSubmission(null); setMessage(''); setPreviewValid(false);
+    newGeneration(generation); setBusy(''); setSubmission(null); setMessage(''); setPreviewValid(false); setHistoryIndex(null);
     if (sceneRef.current) install({ ...sceneRef.current, view: { ...sceneRef.current.view, choices: [] } });
   }
   function select(index, kind) {
@@ -142,7 +145,11 @@ export default function ConstructionPanel(props) {
   }
   function draw(object, candidate) {
     const values = visibleNumbers(object), selected = !candidate && inputs.includes(object.index);
-    const color = candidate ? '#e87925' : selected ? '#4ea1ff' : 'currentColor';
+    const historyRole = !candidate && historyStep ?
+      (object.index === historyStep.output ? 'output' : historyStep.inputs.includes(object.index) ? 'input' : null) : null;
+    const color = historyRole === 'output' || candidate ? '#e87925' :
+      historyRole === 'input' || (!historyStep && selected) ? '#4ea1ff' : 'currentColor';
+    const style = { cursor: 'pointer', opacity: historyStep && !historyRole ? 0.2 : 1 };
     const key = `${candidate ? 'c' : 'o'}${object.index}`;
     const title = `${candidate ? 'Choice' : object.kind} ${object.index + (candidate ? 1 : 0)}: ≈ ${describeObject(object)}`;
     const inspect = { onMouseEnter: () => { setInspection(title); if (candidate) setHover(object.index); },
@@ -150,9 +157,9 @@ export default function ConstructionPanel(props) {
     if (object.kind === 'point') {
       const [cx, cy] = screen(values);
       if (![cx, cy].every(Number.isFinite)) return null;
-      return e('g', { key, ...inspect, onClick: () => select(object.index, 'point'), style: { cursor: 'pointer' } },
+      return e('g', { key, ...inspect, 'data-history-role': historyRole, onClick: () => select(object.index, 'point'), style },
         e('title', null, title), e('circle', { cx, cy, r: 12, fill: 'transparent' }),
-        e('circle', { cx, cy, r: 4, fill: color }), e('text', { x: cx + 7, y: cy - 7, fill: color, fontSize: 12 }, `P${object.index}`));
+        e('circle', { cx, cy, r: historyRole ? 6 : 4, fill: color }), e('text', { x: cx + 7, y: cy - 7, fill: color, fontSize: 12 }, `P${object.index}`));
     }
     const segment = clipLine(...values, box);
     if (!segment) return null;
@@ -161,10 +168,10 @@ export default function ConstructionPanel(props) {
     // the viewport even for horizontal/vertical lines at the canvas edge.
     const labelX = Math.max(6, Math.min(WIDTH - 60, p[0] * 0.8 + q[0] * 0.2 + 6));
     const labelY = Math.max(14, Math.min(HEIGHT - 6, p[1] * 0.8 + q[1] * 0.2 - 6));
-    return e('g', { key, ...inspect, onClick: () => candidate ? setHover(object.index) : select(object.index, 'line'), style: { cursor: 'pointer' } },
+    return e('g', { key, ...inspect, 'data-history-role': historyRole, onClick: () => candidate ? setHover(object.index) : select(object.index, 'line'), style },
       e('title', null, title), e('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], stroke: 'transparent', strokeWidth: 12 }),
       e('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], stroke: color,
-        strokeWidth: candidate && hover === object.index ? 4 : 1.5, strokeDasharray: candidate ? '7 4' : undefined }),
+        strokeWidth: historyRole ? 3.5 : candidate && hover === object.index ? 4 : 1.5, strokeDasharray: candidate ? '7 4' : undefined }),
       e('text', { x: labelX, y: labelY, fill: color, fontSize: 12,
         stroke: 'var(--vscode-editor-background)', strokeWidth: 3, paintOrder: 'stroke' },
         candidate ? `Choice ${object.index + 1}` : `L${object.index}`));
@@ -197,11 +204,24 @@ export default function ConstructionPanel(props) {
         setViewport({ ...d.viewport, x: d.viewport.x - (ev.clientX - d.x) * scale, y: d.viewport.y + (ev.clientY - d.y) * scale }); } },
       onPointerUp: () => { drag.current = null; }, onPointerCancel: () => { drag.current = null; },
     }, e('g', { pointerEvents: 'none', stroke: 'currentColor', fill: 'currentColor', strokeOpacity: 0.2, fillOpacity: 0.65, fontSize: 10 }, ...gridLines),
-      ...objects.filter(o => o.kind === 'line').map(o => draw(o, false)),
+      ...objects.filter(o => o.kind === 'line' && o.index !== historyStep?.output).map(o => draw(o, false)),
       ...choices.map(o => draw(o, true)),
-      ...objects.filter(o => o.kind === 'point').map(o => draw(o, false))),
-    e('p', { role: 'status', style: { minHeight: '2.5em', margin: '6px 0', fontSize: '0.9em' } },
+      ...objects.filter(o => o.kind === 'point' && o.index !== historyStep?.output).map(o => draw(o, false)),
+      ...objects.filter(o => o.index === historyStep?.output).map(o => draw(o, false))),
+    e('p', { role: 'status', style: { height: '4em', overflowY: 'auto', margin: '6px 0', fontSize: '0.9em' } },
+      historyStep ? `Step ${historyIndex + 1}: ${historyStep.description}. Inputs (blue): ${historyStep.inputs.map(objectLabel).join(', ')}. Output (orange): ${objectLabel(historyStep.output)}.` :
       inspection || 'Hover over a point or line to inspect its approximate coordinates or equation.'),
+    e('details', { onToggle: ev => { if (!ev.currentTarget.open) setHistoryIndex(null); } },
+      e('summary', null, 'Construction history'),
+      e('p', null, 'Hover over a step or focus it with Tab to highlight its inputs and result.'),
+      e('ol', { style: { maxHeight: '160px', overflowY: 'auto', margin: '6px 0' } }, ...(scene?.view.history ?? []).map((step, i) => e('li', {
+        // Pointer movement, rather than entry caused by scrolling, selects a row.
+        key: i, tabIndex: 0, onMouseMove: () => setHistoryIndex(i),
+        onMouseLeave: () => setHistoryIndex(current => current === i ? null : current),
+        onFocus: () => setHistoryIndex(i),
+        onBlur: () => setHistoryIndex(current => current === i ? null : current),
+        style: { padding: '4px', background: historyIndex === i ? 'var(--vscode-list-hoverBackground)' : undefined },
+      }, `${step.description} → ${objectLabel(step.output)}`)))),
     e('div', null,
       button('Zoom in', () => setViewport(v => ({ ...v, width: Math.max(1e-12, v.width / 2) }))),
       button('Zoom out', () => setViewport(v => ({ ...v, width: Math.min(1e12, v.width * 2) }))),
@@ -228,8 +248,6 @@ export default function ConstructionPanel(props) {
       e('ul', null, ...objects.map(o => e('li', { key: o.index },
         button(`${o.kind} ${o.index}`, () => select(o.index, o.kind)),
         e('span', null, describeObject(o)))))),
-    e('details', null, e('summary', null, 'Construction history'),
-      e('ol', null, ...(scene?.view.history ?? []).map((step, i) => e('li', { key: i }, `${step} → object ${i + 2}`)))),
     e('fieldset', null, e('legend', null, 'Submit a coordinate'),
       e('select', { 'aria-label': 'Final point', value: objects.some(o => o.kind === 'point' && o.index === finalPoint) ? finalPoint : '', onChange: ev => { invalidate(); setFinalPoint(Number(ev.target.value)); } },
         e('option', { value: '', disabled: true }, 'Select a point'),

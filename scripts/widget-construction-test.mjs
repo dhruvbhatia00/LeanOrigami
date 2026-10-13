@@ -189,15 +189,54 @@ assert.equal(requests[0].params.action, 'start');
 assert.equal(requests[0].params.session, null);
 requests.shift().resolve({ session: { p: 'restored' }, point: 4, coordinate: 'y',
   view: { objects: [...start.view.objects, line(2, 1, 0, 0), line(3, 0, 1, 1), point(4, 0, 1)],
-    choices: [], steps: 3, history: ['first fold', 'second fold', 'intersection'] } });
+    choices: [], steps: 3, history: [
+      { description: 'first fold', inputs: [0, 1], output: 2 },
+      { description: 'second fold', inputs: [0, 2], output: 3 },
+      { description: 'intersection', inputs: [2, 3], output: 4 }] } });
 await flush();
 assert.equal(selectors().find(n => n.props['aria-label'] === 'Final point').props.value, 4);
 assert.equal(selectors().find(n => n.props['aria-label'] === 'Coordinate').props.value, 'y');
 assert.equal(button('Undo').props.disabled, false);
+const historyRows = () => walk(tree).filter(n => n.tag === 'li' && n.props.tabIndex === 0);
+const drawn = index => walk(tree).find(n => n.tag === 'g' && n.props.key === `o${index}`);
+selectors()[1].props.onChange({ target: { value: '1' } }); render();
+selectors()[2].props.onChange({ target: { value: '0' } }); render();
+const savedSelections = selectors().map(n => n.props.value);
+historyRows()[0].props.onMouseMove(); render();
+assert.equal(drawn(0).props['data-history-role'], 'input');
+assert.equal(drawn(1).props['data-history-role'], 'input');
+assert.equal(drawn(2).props['data-history-role'], 'output');
+assert.equal(drawn(3).props.style.opacity, 0.2);
+// Draw the output last so coincident earlier objects cannot cover it.
+assert.equal(walk(tree).filter(n => n.tag === 'g' && /^o/.test(n.props.key)).at(-1).props.key, 'o2');
+assert.ok(walk(tree).some(n => n.props.role === 'status' && n.children.some(c => String(c).includes('Inputs (blue): P0, P1. Output (orange): L2'))));
+assert.deepEqual(selectors().map(n => n.props.value), savedSelections);
+assert.equal(requests.length, 0); // Inspection is local and never runs an operation.
+historyRows()[0].props.onMouseLeave(); render();
+assert.equal(drawn(2).props['data-history-role'], null);
+assert.equal(drawn(3).props.style.opacity, 1);
+historyRows()[2].props.onFocus(); render();
+// Scrolling a focused row into view must not let a stationary pointer steal it.
+assert.equal(historyRows()[0].props.onMouseEnter, undefined);
+historyRows()[0].props.onMouseLeave(); render();
+assert.equal(drawn(2).props['data-history-role'], 'input');
+assert.equal(drawn(3).props['data-history-role'], 'input');
+assert.equal(drawn(4).props['data-history-role'], 'output');
+assert.equal(walk(drawn(4)).find(n => n.tag === 'circle' && n.props.fill !== 'transparent').props.r, 6);
+historyRows()[2].props.onBlur(); render();
+assert.equal(drawn(4).props['data-history-role'], null);
+historyRows()[0].props.onFocus(); render();
+walk(tree).find(n => n.tag === 'details' && n.props.onToggle).props.onToggle({ currentTarget: { open: false } }); render();
+assert.equal(drawn(2).props['data-history-role'], null);
 button('Submit').props.onClick(); render();
 const restoredSubmit = requests.shift();
 assert.equal(restoredSubmit.params.session.p, 'restored');
 assert.equal(restoredSubmit.params.point, 4);
 assert.equal(restoredSubmit.params.coordinate, 'y');
 restoredSubmit.reject(new Error('test cleanup')); await flush();
+historyRows()[2].props.onMouseMove(); render();
+button('Undo').props.onClick(); render(); requests.shift().resolve(start); await flush();
+assert.equal(historyRows().length, 0);
+assert.equal(drawn(0).props['data-history-role'], null);
+assert.equal(drawn(0).props.style.opacity, 1);
 console.log('PASS: panel input wiring, exact snapshot selection, undo during submission, and versioned insertion');

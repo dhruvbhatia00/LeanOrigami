@@ -134,3 +134,27 @@ The final widget build, including concise decimal formatting, passed. No
 full-suite rerun or new timing benchmark is claimed for this focused UI revision.
 The requested persistent editing and line-label checkpoint is complete; broader
 Phase 6 acceptance remains tracked separately above.
+
+History inspection follow-up: the history now carries structured input/output
+references derived from each instruction, replacing prose-only entries. Hover
+or keyboard focus highlights inputs in blue and the result in orange, dims
+other objects, and draws the result last for coincident geometry. The history
+sits below the canvas in a bounded scroll area. Inspection is local and leaves
+programs, proofs, operation selections, and the submitted coordinate unchanged.
+
+Validation: the session module and separate history tests pass complete LSP
+diagnostics; the widget build passes and is up to date. Lean tests cover all
+seven input mappings and intersection/output numbering. Browser tests cover
+folds, intersections, keyboard focus, clearing on leave/collapse/undo, output
+layering, and preservation of selections without RPC calls. The saved-proof
+and certificate code is unchanged. Live testing on the saved square-root proof
+confirmed blue inputs, orange output, dimming, and clearing on departure for
+folds and intersections without changing its eight steps or selected point.
+It exposed stationary-pointer interference when keyboard focus scrolls history;
+inspection now follows actual pointer movement, and obsolete leave/blur events
+do not clear another row's highlight. The regression and final live keyboard
+check both pass: Tab to the fifth step keeps its intersection highlighted after
+scrolling, with the original point/coordinate selection intact. The targeted
+widget rebuild passed and its embedded source was checked for the fix. JavaScript-only edits require explicitly rebuilding
+the widget module because this Lake setup does not track its `include_str` input;
+the developer instructions now document that narrow rebuild.

@@ -105,24 +105,45 @@ private def objectView (index bits : Nat) : Object Scalar → ObjectView
   | .line l => ⟨index, "line", #[approximate l.a bits, approximate l.b bits,
       approximate l.c bits]⟩
 
-/-- Describe an instruction using the same stable references as the input controls. -/
-def instructionDescription : Instruction Scalar → String
-  | .intersect l r _ => s!"Intersect lines {l.index} and {r.index}"
-  | .fold request _ => match request with
-    | .axiom1 p q => s!"Axiom 1: through points {p.index}, {q.index}"
-    | .axiom2 p q => s!"Axiom 2: point {p.index} onto point {q.index}"
-    | .axiom3 l m => s!"Axiom 3: line {l.index} onto line {m.index}"
-    | .axiom4 p l => s!"Axiom 4: through point {p.index}, perpendicular to line {l.index}"
-    | .axiom5 p q l => s!"Axiom 5: point {p.index} onto line {l.index}, fixing point {q.index}"
-    | .axiom6 p q l m => s!"Axiom 6: points {p.index}, {q.index} onto lines {l.index}, {m.index}"
-    | .axiom7 p l m => s!"Axiom 7: point {p.index} onto line {l.index}, perpendicular to line {m.index}"
+/-- History display metadata refers to the same objects as the exact program.
+Inputs retain their operation order; output is the appended object's index. -/
+structure HistoryStep where
+  description : String
+  inputs : Array Nat
+  output : Nat
+  deriving Lean.ToJson, Lean.FromJson
+
+/-- Describe a step and expose its references without parsing human-readable text. -/
+def historyStep (output : Nat) : Instruction Scalar → HistoryStep
+  | .intersect l r _ =>
+    ⟨s!"Intersect lines {l.index} and {r.index}", #[l.index, r.index], output⟩
+  | .fold request _ =>
+    let (description, inputs) := match request with
+      | .axiom1 p q =>
+        (s!"Axiom 1: through points {p.index}, {q.index}", #[p.index, q.index])
+      | .axiom2 p q =>
+        (s!"Axiom 2: point {p.index} onto point {q.index}", #[p.index, q.index])
+      | .axiom3 l m =>
+        (s!"Axiom 3: line {l.index} onto line {m.index}", #[l.index, m.index])
+      | .axiom4 p l =>
+        (s!"Axiom 4: through point {p.index}, perpendicular to line {l.index}", #[p.index, l.index])
+      | .axiom5 p q l =>
+        (s!"Axiom 5: point {p.index} onto line {l.index}, fixing point {q.index}",
+          #[p.index, q.index, l.index])
+      | .axiom6 p q l m =>
+        (s!"Axiom 6: points {p.index}, {q.index} onto lines {l.index}, {m.index}",
+          #[p.index, q.index, l.index, m.index])
+      | .axiom7 p l m =>
+        (s!"Axiom 7: point {p.index} onto line {l.index}, perpendicular to line {m.index}",
+          #[p.index, l.index, m.index])
+    ⟨description, inputs, output⟩
 
 /-- Display data contains no editable exact coordinates. -/
 structure View where
   objects : Array ObjectView
   choices : Array ObjectView
   steps : Nat
-  history : Array String
+  history : Array HistoryStep
   deriving Lean.ToJson, Lean.FromJson
 
 /-- Render a snapshot at the requested precision, preserving exact candidate identity. -/
@@ -131,6 +152,7 @@ def Session.view (session : Session) (bits : Nat) : View :=
   { objects := session.objects.toArray.mapIdx fun i o => objectView i bits o
     choices := choices.toArray.mapIdx fun i l => objectView i bits (.line l)
     steps := session.program.length
-    history := session.program.toArray.map instructionDescription }
+    history := session.program.toArray.mapIdx fun i step =>
+      historyStep ((Program.initial (K := Scalar)).length + i) step }
 
 end LeanOrigami.Widget

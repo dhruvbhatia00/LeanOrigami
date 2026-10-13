@@ -36,6 +36,12 @@ selected branches remain exact. At extreme magnification, floating-point
 rendering can still make distinct objects overlap: select by object or choice
 number. Refinement has a finite resource limit.
 
+Expand **Construction history** below the canvas and hover over a step (or
+focus it with Tab). Its inputs turn blue and its result turns orange; other
+objects fade. This also works for intersections and reopened saved proofs.
+Move away or close the history to restore the normal drawing. Inspection does
+not change the construction or any input selections.
+
 **Undo** removes the last committed operation. It also invalidates older
 previews and pending submissions. Changing inputs invalidates old previews.
 Changes to the source file require reopening the construction at the current
@@ -153,3 +159,9 @@ Native computation proposes choices and prepares certificates. Lean's kernel
 checks the saved mathematical proof. The display can be inaccurate without
 changing the exact construction. A JSON response or a successful native check
 is not itself a proof.
+
+When developing `widget/construction.js`, this Lake setup does not track the
+`include_str` file as a build dependency. After a JavaScript-only change,
+remove only the generated `.lake/build/lib/lean/LeanOrigami/Widget.olean`, then
+run `lake build LeanOrigami.Widget` and restart the Lean file. Do not clear
+dependency caches. The JavaScript interaction tests need no Lean rebuild.
