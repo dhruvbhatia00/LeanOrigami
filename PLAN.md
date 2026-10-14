@@ -19,7 +19,8 @@ by default. Follow [AGENTS.md](AGENTS.md) throughout implementation.
 - Explicit, replayable construction programs, a text interface, and a
   ProofWidgets interface producing kernel-checkable Lean proofs.
 - Exact real algebraic coordinates, with approximate rendering.
-- Reusable constructions with concrete inputs.
+- Reusable constructions with concrete inputs, GUI-authored requirements from
+  a proved exact condition language, and standard recipes with proved contracts.
 - Proofs that constructible real numbers form a subfield, are closed under
   nonnegative square roots, and contain every real root of a cubic with
   constructible coefficients.
@@ -168,8 +169,9 @@ screen coordinates are never imported as new construction data.
 Provide input selection, operation selection, branch previews, undo,
 pan/zoom, construction inspection, and submission. Keep the UI responsive
 during computation and reject stale asynchronous results after undo or edits.
-Free exploration with theorem export is an optional follow-up after
-goal-directed submission, not a main-release requirement.
+Standalone recipe exploration is implemented in Phase 6R/6S. Phase 7 adds
+declared requirements and proved library contracts using the same interface;
+automatically proving arbitrary user recipes remains later symbolic work.
 
 ## 3. Mathlib and Hex responsibilities
 
@@ -753,7 +755,7 @@ remaining limitation before deciding whether Phase 6 can start.
 
 ### Phase 6 — ProofWidgets construction interface
 
-**Status:** started 2026-10-12. Build the visual proof-construction experience
+**Status:** complete; subsequent work begins in Phase 7 (2026-10-13). Build the visual proof-construction experience
 using the existing `Program`, solver, checker, and certificate exporter. Do not
 introduce another construction language or reimplement geometric formulas.
 The Phase 5 expanded export regression and precise timing comparison remain
@@ -777,8 +779,10 @@ saving again passed, with line labels visible. Cubic GUI submission and the
 remaining broader interaction checks have not been repeated. The focused
 persistent-editing, line-label, and concise-decimal revision is complete: builds,
 Lean integration regressions, browser tests, proof replay, and the live editing
-cycle passed. Phase 6 is not yet complete; see
-[`docs/phase-6.md`](docs/phase-6.md) for the evidence and remaining checks.
+cycle passed. Phase 6 is treated as complete in the approved work order.
+The broader repeat checks noted above remain release-validation follow-ups
+for Phase 8, not newly reported passes; see
+[`docs/phase-6.md`](docs/phase-6.md) for the recorded evidence.
 
 **History inspection revision:** hovering or keyboard-focusing a construction
 history step highlights its exact input references in blue and its output in
@@ -968,9 +972,9 @@ history, current-input branch choices, and GUI-to-kernel replay are implemented.
 The focused tests and live save/reopen checks passed; see
 [the checkpoint audit](docs/phase-6-recipes.md) and
 [the recipe guide](docs/recipes.md). This does not close the older Phase 6
-release checks or start Phase 7.
+release checks, which remain tracked for Phase 8. Phase 7 is the next work.
 
-**Approved extension (2026-10-12), before Phase 7.** Let users build outside
+**Approved extension (2026-10-12), completed before the new Phase 7.** Let users build outside
 a theorem, save a parameterized recipe, and invoke it from the proof widget.
 An exact saved construction and a reusable recipe are different: recipes
 record operations and references, then recompute geometry for each invocation.
@@ -1012,12 +1016,14 @@ conditional alternatives, and exact predicate-based branch selectors extend
 this interface later. Standard arithmetic, roots, projections, and coordinate
 transfer recipes are the planned next library additions; start with midpoint
 to validate the complete workflow, reusing existing correctness results where
-applicable. Phase 9 retains the general symbolic-proof work.
+applicable. Phase 7 now schedules these additions, conditions, branch policies,
+and proved library specifications; Phase 10 retains general symbolic-proof
+generation for user-authored programs.
 
 ### Phase 6S — GUI sample setup and recipe previews
 
 **Complete, 2026-10-13.** See [checkpoint audit](docs/phase-6-samples.md).
-Before Phase 7, let bare
+Completed before Phase 7: let bare
 `origami_recipe` open a setup panel, and let users explore a recipe on different
 samples. Preserve the existing explicit command syntax and certification path.
 
@@ -1065,9 +1071,257 @@ inputs in the GUI, build and save a recipe, and preview it on different samples
 without losing its instructions or seeing stale results. Saved workspaces remain
 editable and their recipes remain usable in proofs. Exploration makes no claim
 that a recipe works for every input. Continuous recomputation while dragging,
-automatic branch predicates, and symbolic correctness proofs remain later work.
+automatic branch predicates, and symbolic correctness proofs were outside this
+checkpoint. Phase 7 now schedules exact branch policies and proved library
+contracts; general symbolic proof generation remains Phase 10.
 
-### Phase 7 — Package the main theory and release
+### Phase 7 — Recipe contracts, proved operations, and authoring guidance
+
+**Approved scope, 2026-10-13; checkpoint 1 complete.** Build on completed Phase 6,
+including the standalone recipe editor and sample previews. Deliver the small
+usability improvements first, then shared condition/specification support,
+then independently auditable recipe families. Follow AGENTS.md throughout.
+Do not duplicate the editor, primitive solvers, or certification pipeline.
+
+A recipe contract separates three claims: its declared input requirements,
+what any accepted result means, and whether a successful construction exists
+and can be obtained for every permitted input. Passing checks on one sample
+is not a proof of a universal claim. Ordinary user-authored recipes remain
+usable without a proved general specification; their concrete proof invocations
+still certify the expanded construction through the existing kernel checker.
+
+#### Delivery checkpoints
+
+1. **Requirements and authoring guidance (7.1–7.3; complete).** Button
+   explanations, automatic sample names, the exact condition language and its
+   interpretation proofs, and editable/persisted/enforced recipe requirements.
+2. **Contracts and arithmetic (7.4–7.5; pending).** Proved specifications,
+   branch policies, named outputs, and arithmetic recipes.
+3. **Coordinates and roots (7.6–7.7; pending).** Projections, coordinate and
+   distance transfer, square roots, and cube roots with their specifications.
+4. **Angles and integration (7.8–7.9; pending).** Angle conditions, trisection,
+   complete integration checks, documentation, and the final phase audit.
+
+Complete and audit each checkpoint before proceeding. During checkpoints 1–3,
+keep validation light: use file-level LSP diagnostics, focused examples,
+targeted dependency builds, and selected live widget checks. Defer the broad
+integrated validation to checkpoint 4; do not repeatedly run the full suite.
+Record precisely which checks were performed at each checkpoint. The current
+implementation request covers checkpoint 1 only.
+
+**Checkpoint 1 audit (2026-10-13): complete.** Exact condition semantics and
+embedding proofs, persisted/enforced requirements, default names, and control
+help are implemented. Full LSP checks through Workspace, targeted widget builds,
+focused kernel/runtime/browser regressions, and selected live authoring,
+rejection/recovery, and save/reopen checks passed. A React sibling-key collision
+found live was corrected and covered by the browser regression; the corrected
+bundle was rebuilt. Broad phase integration remains reserved for checkpoint 4.
+See [the detailed audit](docs/phase-7-requirements.md). Checkpoint 2 is next and
+has not started.
+
+#### 7.1 Button explanations and automatic sample names
+
+- Add concise explanations to Reset view and Refine display, available on
+  hover and keyboard focus. Reset restores the initial camera position/zoom;
+  Refine requests more accurate display approximations without changing the
+  construction or proving anything additional. Do not promise more hover-label
+  digits or accuracy beyond the eventual browser rendering precision.
+- Name new point inputs A, B, C, and line inputs ℓ₁, ℓ₂, and so on. Skip names
+  already in use, including manually assigned names. Keep names editable and
+  preserve the existing rule fixing parameter identities after setup.
+- Test explanations, keyboard access, default names, collisions, removal/addition,
+  manual renaming, and save/reopen using the existing browser harness.
+
+**Acceptance:** the two controls explain their effects without cluttering the
+canvas, and users can start constructing without manually naming every input.
+
+#### 7.2 Exact condition language and mathematical interpretation
+
+- Define a small, typed language of conditions referring to named inputs and,
+  where appropriate, outputs. Validate references and object kinds before
+  evaluation. Reuse the existing point/line representation and exact Scalar API.
+- Initially include equality/distinctness, point-on-line and point-on-axis
+  incidence, collinearity, parallelism, perpendicularity, coordinate signs and
+  bounds, and polynomial equalities/inequalities over supported scalar terms.
+  Include finite combinations with and, or, and not. Specify coefficient and
+  scalar-expression support explicitly; do not accept arbitrary Lean terms as
+  executable conditions. Avoid redundant encodings of the same predicate.
+- Give every condition a mathematical interpretation and an executable exact
+  decision procedure. Prove that the check is true iff the interpreted condition
+  holds, including the connection to real geometry. Classical decidability is
+  not an executable implementation, and approximate coordinates are not evidence.
+- Specify degeneracies carefully: coincident lines, zero-length directions,
+  and undefined expressions must not make an angle or other condition vacuous.
+  Respect equivalence of line equations under nonzero scaling.
+- Keep this layer independent of widgets and theorem elaboration. Add separate
+  tests for true/false cases, invalid references, boundary cases, Boolean
+  combinations, and exact irrational inputs.
+
+**Acceptance:** each supported condition has a usable exact checker and a
+proved interpretation. No condition requires the recipe author to invent a
+new decidability proof. Custom Lean-defined conditions are deferred; a future
+registration API must require an executable checker and its correctness theorem.
+
+#### 7.3 Requirements in recipe authoring and invocation
+
+- Add a Requirements section to the existing recipe editor: choose a condition
+  family and the parameters it concerns, inspect its readable meaning, and
+  check it against current samples. Save the condition data with the recipe.
+- Show requirements when a recipe operation is selected. Check actual arguments
+  before execution and explain failures specifically, such as “B must lie on
+  the x-axis” or “the denominator must be nonzero.” Sample editing must also
+  report unmet requirements while retaining instructions for recovery.
+- Enforce requirements in the shared execution API, not solely in browser
+  controls. Carry them correctly through nested recipe calls and reference
+  remapping; flattening must not silently discard a callee's requirements.
+- Preserve existing unannotated recipes, saved constructions, grouped history,
+  undo/cancel, and stale-result rejection. Extend existing serialization rather
+  than creating a second recipe format with overlapping responsibilities.
+- Test authoring, changed samples, nested calls, actionable rejection messages,
+  exact persistence, and backward compatibility. Demonstrate that declaring
+  plausible conditions does not by itself establish a recipe's correctness.
+
+**Acceptance:** user-authored recipes can declare supported conditions through
+point-and-click controls. Invocation enforces them exactly, and the interface
+labels them as author-declared requirements rather than proved specifications.
+
+#### 7.4 Specifications, branch policies, and named outputs
+
+- Associate library recipes with precise Lean specifications and proofs. State
+  both partial correctness (every accepted completion has the promised meaning)
+  and success for all advertised valid inputs. Make the branch assumptions of
+  both statements explicit; do not prove mere existence and advertise automatic
+  success of an unrelated branch-selection procedure.
+- Display “requirements checked” separately from “specification proved.” Tie
+  proved status to the actual registered recipe and contract. Editing the recipe
+  or its conditions must not retain a stale proof badge. A recipe's name alone
+  never establishes what it computes.
+- Add exact output conditions and branch policies. Distinguish conditions
+  checkable on a candidate crease from conditions requiring later constructed
+  objects. Design continuation, rejection/reselection, or finite search as
+  needed, with a proved relationship to the successful branches. Never silently
+  reuse sample indices or choose the first candidate merely by enumeration order.
+- For automatic selection, prove the policy finds an appropriate branch under
+  the stated requirements. Where several acceptable choices remain, expose that
+  explicitly. Keep user selection where the contract permits it.
+- Support multiple named outputs while retaining existing single-output recipes.
+  Keep references, recording, groups, undo, persistence, and proof selection
+  consistent; ray outputs may be represented by existing point/line objects with
+  explicit vertex and direction roles rather than a duplicate geometry layer.
+- Keep concrete certification kernel-checkable. Native checks may provide GUI
+  feedback, but any claimed property in a Lean proof must follow from checked
+  evidence and the contract theorem, not a successful untrusted Boolean run.
+- Test a deliberately incorrect declared recipe, a branch-sensitive result,
+  nested contracts, multiple outputs, and save/reopen of proved library recipes.
+
+**Acceptance:** the interface accurately communicates what is proved, and
+branch-sensitive and multiple-output recipes share the existing execution and
+certification infrastructure. Universal proof generation for arbitrary
+GUI-authored recipes is not required here; that remains Phase 10.
+
+#### 7.5 Arithmetic recipes and proofs
+
+Provide addition, subtraction, negation, multiplication, reciprocal, and
+division. Represent a signed scalar x by a point (x, 0), with the coordinate
+frame and required seed objects made explicit. Reuse existing arithmetic
+constructions and theorems after auditing their assumptions and behavior.
+
+Prove each output equals the advertised operation and that the recipe succeeds
+on all valid inputs. Handle zero operands, equal operands, and other geometric
+degeneracies; only reciprocal/division should need a nonzero divisor beyond
+the input representation requirements. If a construction needs different
+finite cases, refactor shared recipe execution to support those cases rather
+than arbitrarily narrowing the advertised domain or returning unconstructed
+coordinates. Case checks do not replace the permitted folding steps.
+
+**Tests and acceptance:** each operation is available in the GUI with its
+requirements and proved specification. Separate examples cover signed and
+irrational values, zero/equal operands, invalid divisors, nested arithmetic,
+and exact saved proof replay. Use a compact representative set, not a large
+catalogue repeating general theorems.
+
+#### 7.6 Coordinate, projection, and distance recipes and proofs
+
+- Orthogonal projection of a point onto either coordinate axis.
+- Transfer of a signed x-coordinate to the y-axis and vice versa.
+- Transfer of the distance between two points to the nonnegative x- or y-axis;
+  distance from the origin is a convenient specialization of the same recipe.
+- State the coordinate frame and output meaning precisely. Distinguish signed
+  coordinate transfer from nonnegative magnitude, and handle zero distance and
+  points already on an axis without unnecessary failure.
+
+**Tests and acceptance:** prove output meaning and success for each advertised
+domain. Include off-axis inputs, negative coordinates, coincident points, and
+nested calls. Axis projection and magnitude transfer must not be confused in
+labels or contracts. Reuse general geometry results and shared constructions.
+
+#### 7.7 Square-root and cube-root recipes and proofs
+
+Provide the nonnegative square root for nonnegative scalar input and the real
+cube root for every real scalar input, represented on the x-axis. Reuse the
+existing quadratic/cubic construction infrastructure. Prove the output identity,
+the relevant sign/uniqueness facts, and success of the actual branch policy.
+Handle zero and negative cube-root inputs explicitly. All intermediate objects
+must come from the existing permitted construction rules.
+
+**Tests and acceptance:** exact rational and irrational examples, zero, a
+negative cube root, rejection of a negative square-root argument, and branch
+selection/reselection under changed samples. Save a representative GUI-produced
+proof and replay it independently of the editor. Roots are not selected by
+appearance or the previous sample's branch number.
+
+#### 7.8 Angle conditions and angle-trisection recipe
+
+- Distinguish the smaller angle in [0, π/2] between unoriented lines from the
+  angle between two rays from a vertex. State ray validity and orientation
+  conventions before implementing the UI or downstream proofs.
+- Add named conditions for 30°, 45°, and 60°, alongside parallel/perpendicular
+  conditions. Use dot products, determinants, polynomial relations, and sign
+  conditions on exact algebraic coordinates. For lines, squared dot products
+  remove direction-sign ambiguity; for rays, retain signs to distinguish an
+  angle from its supplement. Squaring must not introduce accepted wrong angles.
+- Prove agreement with Mathlib's real-valued geometric angle statements.
+  Noncomputable real angles and trigonometry belong in specifications/proofs,
+  not in the executable checks. No conversion from slopes through tan is needed;
+  vertical lines must work normally.
+- Provide angle trisection from a vertex and two ray points, initially for the
+  nonzero, nonstraight angle strictly between 0° and 180°. Return both interior
+  trisecting rays through named output objects. Prove interior placement, their
+  order, the three equal angles, and success under the stated requirements.
+- Reuse cubic constructions and exact branch conditions; a proof that a chosen
+  coordinate satisfies a cubic alone is insufficient to identify the trisectors.
+
+**Tests and acceptance:** named angles and rejected supplements/degenerate rays,
+line-representation invariance, rotated/scaled inputs, and a trisection beyond
+an axis-aligned sample. Check both named outputs and branch behavior in the GUI.
+General algebraic angle bounds, arbitrary trigonometric input expressions, and
+oriented/reflex-angle trisection are deferred extensions, not initial promises.
+
+#### 7.9 Integration, demonstrations, and checkpoint audit
+
+Audit and validate each preceding checkpoint before expanding the next family.
+Keep production modules organized by condition semantics, recipe execution,
+library constructions/proofs, and UI responsibility. Prefer refactoring existing
+abstractions over wrappers or parallel APIs. Preserve acyclic imports and place
+readable tests/demos in separate files on documented validation paths.
+
+Use focused local checks, LSP-first proof development, batched dependency builds,
+and selected live GUI walkthroughs. Cover normal examples, meaningful boundaries,
+invalid inputs, sample edits, requirement messages, branches, nested calls,
+named outputs, saved source, and independent kernel replay. Inspect transitive
+axiom dependencies of the checker bridges and representative recipe theorems.
+No new trusted axiom, native_decide shortcut, or approximate proof evidence.
+
+**Phase acceptance:** all listed recipe families have usable GUI operations,
+clear enforced requirements, proofs of their output meaning and advertised
+success, and representative separate demonstrations. Users can author declared
+requirements from the supported condition families without writing Lean code.
+The interface distinguishes exact checks from universal proofs. Existing
+constructibility proofs remain replayable. Record actual validation, code-size
+and specification audits, performance observations, and remaining limitations;
+do not silently defer a listed recipe while marking the phase complete.
+
+### Phase 8 — Package the main theory and release
 
 Package the arithmetic results as a subfield of `ℝ`, and expose clean
 square-root and cubic-root closure theorems. Prove all constructible
@@ -1085,7 +1339,7 @@ known limitations are recorded. Excluding tests from default targets cannot
 hide failures. No `sorry`, unproved project axiom, or native-execution trust
 shortcut occurs in certification.
 
-### Phase 8 — Real extension-tower characterization (later)
+### Phase 9 — Real extension-tower characterization (later)
 
 State the precise equivalence: a real number is origami-constructible iff it
 belongs to the last field of a finite tower of subfields of `ℝ`, beginning
@@ -1103,7 +1357,7 @@ including the combination of fields from different prior branches.
 quadratic and cubic towers and derive a nonconstructibility example such as
 the real fifth root of 2. Audit both directions and all embedding hypotheses.
 
-### Phase 9 — Symbolic construction programs (stretch)
+### Phase 10 — Symbolic construction programs (stretch)
 
 Extend reusable programs with symbolic inputs and explicit hypotheses.
 Interpret operations as generating proof obligations for validity,
@@ -1137,10 +1391,16 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phase 5 is complete (2026-10-09), including the shared-program
+Current status: Phase 6, including 6R and 6S, is complete in the approved work
+order (2026-10-13). Phase 7 checkpoint 1 is complete; release packaging is
+Phase 8, followed by the extension-tower and symbolic phases 9 and 10.
+See [the sample-editor audit](docs/phase-6-samples.md) for the latest validation.
+Previously deferred expanded checks remain recorded as deferred, not passing.
+
+Phase 5 is complete (2026-10-09), including the shared-program
 repair; see [the audit](docs/phase-5.md).
 Phase 4 is complete (2026-10-08); see [its audit](docs/phase-4.md).
-Phase 3 is complete (2026-10-08). Phase 6 has not started.
+Phase 3 is complete (2026-10-08).
 Phase 2 is complete (2026-10-08). Phases 0 and 1 completed
 on 2026-10-07. The previous implementation
 is preserved in the verified remote archive, and the fresh dependency baseline
@@ -1191,7 +1451,8 @@ was removed. All four substantial root examples, a concrete Hex candidate,
 rejection locations, candidate-order independence, and fresh artifact replay
 passed local validation and transitive axiom checks. Production library source
 shrunk by 82 lines. Automatic certificate extraction from arbitrary opaque Hex
-values remains a limitation, not a completed feature. Phase 6 has not started.
+values is recorded separately in the Phase 5 solver-output certificate update
+above; its deferred expanded regression is not a Phase 7 completion claim.
 
 ## 6. Potential future work — interactive visual proving
 
@@ -1226,7 +1487,7 @@ Generalization must produce a symbolic statement and a proof for arbitrary
 inputs satisfying those hypotheses; checking sampled positions is not proof.
 Expose changes in validity, degeneracies, and branch choices rather than
 silently assuming the concrete construction works everywhere. This would
-provide a visual interface to the symbolic-program work described in Phase 9,
+provide a visual interface to the symbolic-program work described in Phase 10,
 without expanding that phase's current commitments.
 
 ### Further directions to explore

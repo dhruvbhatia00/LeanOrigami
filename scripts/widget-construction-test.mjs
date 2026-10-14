@@ -89,6 +89,9 @@ rpc = { call(name, params) {
   // Lean's RPC decoder requires fields even when their structure has defaults.
   assert.equal(typeof params.recipeName, 'string');
   assert.ok(Array.isArray(params.sampleInputs));
+  assert.equal(typeof params.requirement.family, 'string');
+  assert.ok(Array.isArray(params.requirement.references));
+  assert.ok(Array.isArray(params.requirement.values));
   assert.equal(name, 'LeanOrigami.Widget.interact');
   return new Promise((resolve, reject) => requests.push({ params, resolve, reject }));
 } };
@@ -111,7 +114,7 @@ function button(label) {
   const found = walk(tree).find(n => n.tag === 'button' && n.children.includes(label));
   assert.ok(found, `missing button: ${label}`); return found;
 }
-function selectors() { return walk(tree).filter(n => n.tag === 'select'); }
+function selectors() { return walk(tree).filter(n => n.tag === 'select' && !n.props['aria-label']?.startsWith('Requirement')); }
 render();
 assert.equal(requests.length, 1);
 requests.shift().resolve(start); await flush();
@@ -308,6 +311,7 @@ assert.ok(button('Start construction').props.disabled);
 assert.ok(!walk(tree).some(n => n.tag === 'button' && n.children.includes('Prepare recipe')));
 button('Add point input').props.onClick(); render();
 function input(label) { const node = walk(tree).find(n => n.tag === 'input' && n.props['aria-label'] === label); assert.ok(node, label); return node; }
+assert.equal(input('Input 0 name').props.value, 'A');
 input('Recipe name').props.onChange({ target: { value: 'myRecipe' } }); render();
 input('Input 0 name').props.onChange({ target: { value: 'A' } }); render();
 input('Input 0 x').props.onChange({ target: { value: '1/2' } }); render();
@@ -351,6 +355,7 @@ requests.shift().resolve({ ...grouped, workspace }); await flush();
 gate = 'line-setup'; render(); requests.shift().resolve({ ...start,
   view: { objects: [], choices: [], steps: 0 }, workspace: { name: '', inputs: [], ready: false, nameLocked: false } }); await flush();
 button('Add line input').props.onClick(); render();
+assert.equal(input('Input 0 name').props.value, 'ℓ₁');
 input('Recipe name').props.onChange({ target: { value: 'lineRecipe' } }); render();
 input('Input 0 name').props.onChange({ target: { value: 'L' } }); render();
 button('Place L').props.onClick(); render();
@@ -365,3 +370,48 @@ assert.equal(requests[0].params.sampleInputs[0].kind, 'line');
 assert.deepEqual(plain(requests[0].params.sampleInputs[0].values), ['0/10', '0/10', '10/10', '0/10']);
 requests.shift().reject(new Error('test cleanup')); await flush();
 console.log('PASS: point drag replays on release and two-click line placement creates one input');
+
+// Naming is deterministic, skips manual names of either kind, and reuses gaps.
+const { defaultSampleName } = module.namespace;
+assert.equal(defaultSampleName([], 'point'), 'A');
+assert.equal(defaultSampleName([{ name: 'A' }, { name: 'C' }], 'point'), 'B');
+assert.equal(defaultSampleName([{ name: 'ℓ₁' }, { name: 'ℓ₃' }], 'line'), 'ℓ₂');
+assert.equal(defaultSampleName(Array.from({ length: 26 }, (_, n) => ({ name: String.fromCharCode(65 + n) })), 'point'), 'AA');
+render();
+const resetHelp = walk(tree).find(n => n.tag === 'button' && n.children.includes('Reset view'));
+assert.match(resetHelp.props.title, /camera position and zoom/);
+resetHelp.props.onFocus(); render();
+assert.ok(walk(tree).find(n => n.props.role === 'tooltip').children.includes(resetHelp.props.title));
+resetHelp.props.onBlur(); render();
+const refineHelp = walk(tree).find(n => n.tag === 'button' && n.children.includes('Refine display'));
+refineHelp.props.onMouseEnter(); render();
+assert.match(walk(tree).find(n => n.props.role === 'tooltip').children.join(''), /exact construction and proof stay the same/);
+refineHelp.props.onMouseLeave(); render();
+console.log('PASS: automatic names, collisions, and hover/keyboard control explanations');
+
+// Requirements are server checks, with editable inputs separated from inherited checks.
+gate = 'requirements'; render(); requests.shift().resolve({ ...grouped, workspace: { ...workspace,
+  requirements: [{ description: 'A.y = 0', status: 'Satisfied' }],
+  nestedRequirements: [{ description: 'not (object 0 = object 1)', status: 'Satisfied' }] } }); await flush();
+const requirementSection = walk(tree).find(n => n.props['aria-label'] === 'Requirements');
+const requirementKeys = requirementSection.children.filter(n => n && typeof n === 'object' && n.props.key !== undefined).map(n => n.props.key);
+assert.equal(new Set(requirementKeys).size, requirementKeys.length, 'inherited rows and input controls need distinct React keys');
+const selectRequirement = label => walk(tree).find(n => n.tag === 'select' && n.props['aria-label'] === label);
+assert.ok(button('Add requirement').props.disabled);
+selectRequirement('Requirement family').props.onChange({ target: { value: 'onXAxis' } }); render();
+selectRequirement('Requirement input 1').props.onChange({ target: { value: '1' } }); render();
+button('Add requirement').props.onClick(); render();
+assert.equal(requests[0].params.action, 'addRequirement');
+assert.deepEqual(plain(requests[0].params.requirement.references), [1]);
+assert.equal(requests[0].params.requirement.family, 'onXAxis');
+const failedRequirement = { ...grouped, workspace: { ...workspace, replaying: true,
+  requirements: [{ description: 'A.y = 0', status: 'Not satisfied' }] },
+  view: { ...start.view, running: true, failure: 'Requirement failed: A.y = 0' } };
+requests.shift().resolve(failedRequirement); await flush();
+assert.ok(!button('Remove requirement 1').props.disabled);
+button('Remove requirement 1').props.onClick(); render();
+assert.equal(requests[0].params.action, 'removeRequirement');
+assert.equal(requests[0].params.choice, 0);
+requests.shift().resolve({ ...grouped, workspace }); await flush();
+assert.ok(!button('Prepare recipe').props.disabled);
+console.log('PASS: requirement form, exact-check failure display, and removal while replay is blocked');

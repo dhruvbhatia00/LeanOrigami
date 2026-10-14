@@ -116,3 +116,53 @@ lake lean LeanOrigamiTests/SampleWorkspace.lean -- --run LeanOrigamiTests/Sample
 `RecipeRuntime.lean` contains serialization checks and executable regressions.
 Its generated `Replay.lean` checks both the saved recipe command and a grouped
 proof, and prints the proof's transitive axiom dependencies.
+
+## Declaring input requirements
+
+After setting up samples, open **Requirements**. Choose a geometry condition
+and its named inputs, then click **Add requirement**. Each entry reports whether
+it holds on the currently applied exact samples. It is an author-declared
+requirement, not a proof that the recipe computes its advertised result.
+Changing samples rechecks requirements before replaying the affected steps.
+If a requirement fails, change the samples or remove/change the requirement;
+the saved instruction sequence is retained for recovery.
+
+The initial families cover equal/distinct points or lines, incidence on a line
+or either axis, collinearity, parallelism, perpendicularity, coordinate bounds,
+and polynomial comparisons. Parallel includes coincident lines; collinear
+includes repeated points. Add a distinctness requirement when needed. Lines
+always have a nonzero normal and canonical coefficients.
+
+Coordinate comparisons accept integers and fractions. To require a positive
+coordinate, choose **Coordinate > value** and enter `0`. Polynomial comparisons
+use one selected coordinate `t` and a comma-separated list of rational
+coefficients, constant first: `-2, 0, 1` means `t² - 2`. The form permits up to
+32 coefficients. The underlying Lean condition language also supports sums and
+products involving multiple coordinates and canonical line coefficients.
+It does not accept arbitrary Lean expressions, division by coordinate values,
+or trigonometric functions.
+
+All listed requirements must hold. AND, OR, and NOT replace the selected entries
+with their combination. Nested recipe requirements are shown separately and
+cannot be removed from the calling recipe independently of the call. They are
+checked at the appropriate step during replay, including after saving and
+reopening. The recipe menu also lists a recipe's input requirements.
+
+For API users, `RecipeTemplate.requirements` contains input conditions;
+`RecipeTemplate.checks` preserves conditions inherited from expanded calls,
+with their check boundary and owning call. Ordinary templates without these
+fields keep working. `Construction/Condition.lean` contains the mathematical
+interpretation and exact checker; `Widget/Requirements.lean` contains the form
+translation and readable/source serialization. `Condition.checkObjects_map_iff`
+connects the executable decision to geometry after an ordered field embedding,
+including `Scalar.realHom` into Mathlib's real numbers.
+
+New sample inputs receive the first unused point name (`A`, `B`, …) or line name
+(`ℓ₁`, `ℓ₂`, …). You may rename them before starting the construction. Hover over
+or focus **Reset view** or **Refine display** for an explanation: the former
+resets the camera; the latter improves drawing approximations without changing
+any exact object or proof.
+
+A ready-to-open example is `LeanOrigamiDemos/Requirements.lean`: place the
+cursor on the first `origami_recipe` command to inspect the axis-midpoint
+requirements, or on the bare command near the end to create a new draft.

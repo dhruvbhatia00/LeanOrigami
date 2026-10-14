@@ -18,6 +18,7 @@ structure RecipeCursor where
   remaining : List RecipeOperation
   group : RecipeGroup
   nested : Array RecipeGroup
+  checks : Array RecipeRequirement := #[]
 
 /-- An editing snapshot. Undo and asynchronous requests can retain older snapshots. -/
 structure Session where
@@ -29,6 +30,8 @@ structure Session where
   running : Option RecipeCursor := none
   result : Option Nat := none
   failure : Option String := none
+  requirements : Array Condition := #[]
+  checks : Array RecipeRequirement := #[]
 
 /-- Human-readable geometric failures, shared by all editing operations. -/
 def errorMessage : ConstructionError → String
@@ -80,7 +83,13 @@ def Session.intersect (session : Session) (left right : Nat) : Except String Ses
 /-- Continue discovery, retaining the valid prefix if a step fails. The cursor
 keeps the unexecuted instructions; callers choose whether to expose this draft. -/
 private def Session.advance (session : Session) (steps : List RecipeOperation) : Session :=
-  match steps with
+  let checks := session.running.map (·.checks) |>.getD #[]
+  let failed := checks.find? fun check => check.before == session.program.length &&
+    !check.condition.checkObjects session.objects
+  if let some check := failed then
+    { session with pending := none, failure := some ("Requirement failed: " ++
+      conditionDescription (fun i => s!"object {i}") check.condition) }
+  else match steps with
   | [] => match session.running with
     | none => session
     | some cursor =>
@@ -142,7 +151,16 @@ def Session.useRecipe (session : Session) (name : String) (recipe : RecipeTempla
   let group : RecipeGroup := ⟨name, session.program.length, steps.length, arguments, relocate recipe.output⟩
   let nested := recipe.groups.map fun g => { g with
     start := session.program.length + g.start, inputs := g.inputs.map relocate, output := relocate g.output }
-  let session := { session with pending := none, failure := none, running := some ⟨steps, group, nested⟩ }
+  let inputChecks := recipe.requirements.map fun condition =>
+    RecipeRequirement.mk session.program.length session.program.length (condition.remap relocate)
+  let nestedChecks := recipe.checks.map fun check => { check with
+    before := session.program.length + check.before, owner := session.program.length + check.owner
+    condition := check.condition.remap relocate }
+  let session := { session with
+    pending := none, failure := none
+    requirements := if name.isEmpty then recipe.requirements else session.requirements
+    checks := session.checks ++ (if name.isEmpty then #[] else inputChecks) ++ nestedChecks
+    running := some ⟨steps, group, nested, inputChecks ++ nestedChecks⟩ }
   (session.advance steps).replayResult retainFailure
 
 /-- Remove one primitive or an entire completed/paused recipe call. -/
@@ -155,7 +173,8 @@ def Session.undo (session : Session) : Except String Session := do
   let objects ← (Program.execute session.seeds program).mapError errorMessage
   return { session with
     program, objects, pending := none, running := none, result := none, failure := none
-    groups := session.groups.filter (fun g => g.start + g.count ≤ stop) }
+    groups := session.groups.filter (fun g => g.start + g.count ≤ stop)
+    checks := session.checks.filter (fun check => check.owner < stop) }
 
 /-- Record operations, not the exact results on the workspace's sample inputs. -/
 def Session.template (session : Session) (parameters : Array RecipeParameter) (output : Nat) :
@@ -163,7 +182,7 @@ def Session.template (session : Session) (parameters : Array RecipeParameter) (o
   if session.running.isSome then throw "Finish or cancel the recipe before saving."
   unless parameters.size == session.seeds.length do throw "The workspace parameters changed."
   let recipe : RecipeTemplate := ⟨parameters, session.program.map RecipeOperation.ofInstruction,
-    output, session.groups⟩
+    output, session.groups, session.requirements, session.checks⟩
   let _ ← recipe.validate
   return recipe
 

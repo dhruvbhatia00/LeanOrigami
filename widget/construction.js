@@ -15,6 +15,19 @@ const operations = [
   ['7', '7 · Point onto line, perpendicular', ['Source point', 'Target line', 'Perpendicular to'], ['point', 'line', 'line'], 'Fold the source point onto the target line, with the crease at a right angle to the reference line.'],
   ['intersection', 'Intersect two lines', ['First line', 'Second line'], ['line', 'line'], 'Add the crossing point of two existing lines. Parallel or coincident lines have no unique crossing.'],
 ];
+// Geometry families all compile on the server to the proved condition checker.
+const requirementFamilies = [
+  ['distinctPoints', 'Distinct points', ['point', 'point']], ['samePoints', 'Same point', ['point', 'point']],
+  ['distinctLines', 'Distinct lines', ['line', 'line']], ['sameLines', 'Same line', ['line', 'line']],
+  ['onLine', 'Point on line', ['point', 'line']], ['onXAxis', 'Point on x-axis', ['point']], ['onYAxis', 'Point on y-axis', ['point']],
+  ['collinear', 'Collinear points (repeated points allowed)', ['point', 'point', 'point']],
+  ['parallel', 'Parallel lines (coincident allowed)', ['line', 'line']], ['perpendicular', 'Perpendicular lines', ['line', 'line']],
+  ['coordinateEq', 'Coordinate = value', ['point']], ['coordinateLe', 'Coordinate ≤ value', ['point']],
+  ['coordinateLt', 'Coordinate < value', ['point']], ['coordinateGe', 'Coordinate ≥ value', ['point']], ['coordinateGt', 'Coordinate > value', ['point']],
+  ['polynomialEq', 'Polynomial = 0', ['point']], ['polynomialLe', 'Polynomial ≤ 0', ['point']], ['polynomialLt', 'Polynomial < 0', ['point']],
+  ['and', 'Combine requirements: AND', ['requirement', 'requirement']],
+  ['or', 'Combine requirements: OR', ['requirement', 'requirement']], ['not', 'Negate a requirement', ['requirement']],
+];
 const initialViewport = { x: 0.5, y: 0, width: 4 };
 const HEIGHT = 360, WIDTH = 560;
 export function bounds(viewport) {
@@ -90,11 +103,22 @@ export function samplePreview(rows, existing) {
   });
 }
 
+// Reuse the first available name, including gaps left by removal or renaming.
+export function defaultSampleName(rows, kind) {
+  const used = new Set(rows.map(row => row.name));
+  const letters = n => { let name = ''; do { name = String.fromCharCode(65 + n % 26) + name; n = Math.floor(n / 26) - 1; } while (n >= 0); return name; };
+  for (let n = 0; ; n++) {
+    const name = kind === 'point' ? letters(n) : 'ℓ' + String(n + 1).replace(/[0-9]/g, d => '₀₁₂₃₄₅₆₇₈₉'[Number(d)]);
+    if (!used.has(name)) return name;
+  }
+}
+
 export default function ConstructionPanel(props) {
   const rpc = useRpcSession(), editor = React.useContext(EditorContext);
   const [scene, setScene] = React.useState(null), sceneRef = React.useRef(null);
   const [operation, setOperation] = React.useState('1'), [inputs, setInputs] = React.useState([]);
   const [active, setActive] = React.useState(0), [viewport, setViewport] = React.useState(initialViewport);
+  const [controlHelp, setControlHelp] = React.useState('');
   const [extraBits, setExtraBits] = React.useState(0), [busy, setBusy] = React.useState('');
   const [message, setMessage] = React.useState(''), [submission, setSubmission] = React.useState(null);
   const [finalPoint, setFinalPoint] = React.useState(1), [coordinate, setCoordinate] = React.useState('x');
@@ -104,6 +128,8 @@ export default function ConstructionPanel(props) {
   const [editingSamples, setEditingSamples] = React.useState(false);
   const [sampleRows, setSampleRows] = React.useState([]), [recipeName, setRecipeName] = React.useState('');
   const [placement, setPlacement] = React.useState(null), [tentative, setTentative] = React.useState(null);
+  const [requirementFamily, setRequirementFamily] = React.useState('distinctPoints');
+  const [requirementRefs, setRequirementRefs] = React.useState([]), [requirementValues, setRequirementValues] = React.useState(['x', '0']);
   const sampleDrag = React.useRef(null);
   const generation = React.useRef(0), drag = React.useRef(null), canvas = React.useRef(null);
   const gateKey = JSON.stringify(props.gate);
@@ -130,10 +156,11 @@ export default function ConstructionPanel(props) {
       const response = await rpc.call('LeanOrigami.Widget.interact', {
         gate: props.gate, session: sceneRef.current?.session ?? null,
         action, operation, inputs: ['preview', 'intersect', 'recipe'].includes(action) ? inputs : [],
-        choice: 0, point: finalPoint, coordinate, bits, recipeName: '', sampleInputs: [], ...overrides,
+        choice: 0, point: finalPoint, coordinate, bits, recipeName: '', sampleInputs: [], requirement: { family: 'distinctPoints', references: [], values: [] }, ...overrides,
       });
       if (!isCurrent(generation, token)) return;
       install(response);
+      if (['start', 'addRequirement', 'removeRequirement'].includes(action)) setRequirementRefs([]);
       if (response.workspace && ['start', 'samples', 'resetSamples'].includes(action)) {
         setSampleRows(response.workspace.inputs); setRecipeName(response.workspace.name);
         if (action === 'start') setEditingSamples(!response.workspace.ready);
@@ -141,7 +168,7 @@ export default function ConstructionPanel(props) {
         setPlacement(null); setTentative(null);
       }
       if (response.view.running || action === 'preview') setPreviewValid(true);
-      else if (['start', 'choose', 'intersect', 'undo', 'recipe', 'samples', 'resetSamples'].includes(action)) {
+      else if (['start', 'choose', 'intersect', 'undo', 'recipe', 'samples', 'resetSamples', 'addRequirement', 'removeRequirement'].includes(action)) {
         setPreviewValid(false); setInputs([]); setActive(0); setHover(null); setInspection('');
         if (action === 'start') {
           setFinalPoint(response.point ?? 1); setCoordinate(response.coordinate ?? 'x');
@@ -264,7 +291,19 @@ export default function ConstructionPanel(props) {
         e('text', { x: 4, y: Math.max(11, sy - 3), stroke: 'none' }, displayNumber(y)));
     }),
   ];
+  const requirementSpec = requirementFamilies.find(f => f[0] === requirementFamily);
+  const combining = ['and', 'or', 'not'].includes(requirementFamily);
+  const requirementFields = requirementFamily.startsWith('coordinate') || requirementFamily.startsWith('polynomial');
+  const requirements = scene?.workspace?.requirements ?? [];
+  const requirementLocked = !!busy || (!!scene?.view.running && !scene?.workspace?.replaying);
   const button = (label, onClick, disabled = false) => e('button', { type: 'button', onClick, disabled, style: { margin: '3px' } }, label);
+  const helpButton = (label, onClick, help, disabled = false) => e('button', {
+    onClick, disabled, title: help, 'aria-description': help,
+    onFocus: () => setControlHelp(help), onBlur: () => setControlHelp(''),
+    onMouseEnter: () => setControlHelp(help), onMouseLeave: () => setControlHelp(''),
+    style: { marginRight: '5px' },
+  }, label);
+
   function historyRow(step, i) {
     return e('li', {
       key: i, tabIndex: 0, onMouseMove: () => setHistoryIndex(i),
@@ -323,9 +362,10 @@ export default function ConstructionPanel(props) {
     e('div', null,
       button('Zoom in', () => setViewport(v => ({ ...v, width: Math.max(1e-12, v.width / 2) }))),
       button('Zoom out', () => setViewport(v => ({ ...v, width: Math.min(1e12, v.width * 2) }))),
-      button('Reset view', () => setViewport(initialViewport)),
-      button('Refine display', () => setExtraBits(b => Math.min(480, b + 32)), !!busy),
+      helpButton('Reset view', () => setViewport(initialViewport), 'Restore the initial camera position and zoom.'),
+      helpButton('Refine display', () => setExtraBits(b => Math.min(480, b + 32)), 'Request more accurate drawing approximations. The exact construction and proof stay the same.', !!busy),
       button('Undo', () => request('undo'), !scene || scene.view.steps === 0 || !!scene.view.running || !!editingSamples)),
+    controlHelp && e('p', { role: 'tooltip' }, controlHelp),
     unresolvedDisplay && e('p', { role: 'status' }, 'Some objects need more display precision. Refine or use the exact object list.'),
     props.workspace && e('section', { 'aria-label': 'Sample inputs' },
       !setup && button(editingSamples ? 'Finish editing samples' : 'Edit samples', () => {
@@ -348,16 +388,46 @@ export default function ConstructionPanel(props) {
           row.kind === 'line' && button('Enter equation', () => editRow(i, { values: ['', '', ''], keep: false }), !!busy),
           setup && button(`Remove input ${i}`, () => { invalidate(); setSampleRows(rows => rows.filter((_, j) => j !== i)); setPlacement(null); }, !!busy))),
         setup && e('div', null, ...['point', 'line'].map(kind => button(`Add ${kind} input`, () => {
-          invalidate(); setSampleRows(rows => [...rows, { name: '', kind, values: kind === 'point' ? ['0', '0'] : ['1', '0', '0'], keep: false }]);
+          invalidate(); setSampleRows(rows => [...rows, { name: defaultSampleName(rows, kind), kind, values: kind === 'point' ? ['0', '0'] : ['1', '0', '0'], keep: false }]);
         }, !!busy))),
         placement && e('p', { role: 'status' }, placement.first ? 'Click the second point of the sample line.' : 'Click on the canvas to place this input.'),
         button(setup ? 'Start construction' : 'Apply samples', () => request('samples', { sampleInputs: sampleRows, recipeName }), !!busy || !sampleRows.length),
         !setup && button('Reset samples', () => request('resetSamples'), !!busy))),
-    scene?.view.failure && e('p', { role: 'alert' }, `${scene.view.failure} Downstream results are hidden. Edit samples or reset to try again; the recipe is retained.`),
+    props.workspace && !setup && e('details', { 'aria-label': 'Requirements' },
+      e('summary', null, `Requirements (${requirements.length})`),
+      e('p', null, 'Author-declared input requirements, checked exactly on the applied samples. These are not a proof of what the recipe achieves.'),
+      e('ol', null, ...requirements.map((item, i) => e('li', { key: i },
+        `${item.description} — ${item.status}`, button(`Remove requirement ${i + 1}`, () => request('removeRequirement', { choice: i }), requirementLocked)))),
+      ...(scene?.workspace?.nestedRequirements ?? []).map((item, i) => e('p', { key: `nested-${i}` }, `From a nested recipe: ${item.description} — ${item.status}`)),
+      e('label', null, 'Condition ', e('select', { 'aria-label': 'Requirement family', value: requirementFamily, disabled: requirementLocked,
+        onChange: ev => { setRequirementFamily(ev.target.value); setRequirementRefs([]); setRequirementValues(['x', '0']); } },
+        ...requirementFamilies.map(([value, label]) => e('option', { key: value, value }, label)))),
+      ...requirementSpec[2].map((kind, i) => e('label', { key: `requirement-input-${i}` }, ` ${kind} ${i + 1} `,
+        e('select', { 'aria-label': `Requirement input ${i + 1}`, value: requirementRefs[i] ?? '', disabled: requirementLocked,
+          onChange: ev => setRequirementRefs(old => { const next = [...old]; next[i] = Number(ev.target.value); return next; }) },
+          e('option', { value: '', disabled: true }, `Select ${kind}`),
+          ...(kind === 'requirement' ? requirements.map((r, index) => ({ name: r.description, index })) :
+            (workspace?.inputs ?? []).map((r, index) => ({ ...r, index })).filter(r => r.kind === kind))
+            .map(r => e('option', { key: r.index, value: r.index }, r.name))))),
+      requirementFields && e('div', null,
+        e('label', null, 'Coordinate ', e('select', { 'aria-label': 'Requirement coordinate', value: requirementValues[0], disabled: requirementLocked,
+          onChange: ev => setRequirementValues(old => [ev.target.value, old[1]]) }, e('option', { value: 'x' }, 'x'), e('option', { value: 'y' }, 'y'))),
+        e('label', null, requirementFamily.startsWith('polynomial') ? ' Coefficients (constant first) ' : ' Value ',
+          e('input', { 'aria-label': 'Requirement value', value: requirementValues[1], disabled: requirementLocked,
+            onChange: ev => setRequirementValues(old => [old[0], ev.target.value]) })),
+        e('small', null, requirementFamily.startsWith('polynomial') ? ' Integers or fractions, comma-separated. Example: −2, 0, 1 means t² − 2 (type - for minus).' : ' Use an integer or fraction. Use 0 to require a sign.')),
+      combining && e('p', null, 'The selected requirements will be replaced by this combination; all remaining requirements must still hold.'),
+      button(combining ? 'Combine requirements' : 'Add requirement', () => {
+        request('addRequirement', { requirement: { family: requirementFamily, references: requirementRefs, values: requirementValues } });
+        setRequirementRefs([]);
+      }, requirementLocked || requirementSpec[2].some((_, i) => requirementRefs[i] === undefined))),
+    scene?.view.failure && e('p', { role: 'alert' }, `${scene.view.failure} Downstream results are hidden. Edit samples or requirements, or reset samples to try again; the recipe is retained.`),
     !setup && !editingSamples && e('div', null,
     e('label', null, 'Operation ', e('select', { value: operation, disabled: !!busy || !!scene?.view.running, onChange: ev => { invalidate(); setOperation(ev.target.value); setInputs([]); setActive(0); } },
       ...availableOperations.map(o => e('option', { key: o[0], value: o[0] }, o[1])))),
     e('p', { style: { margin: '6px 0' } }, spec[4]),
+    operation.startsWith('recipe:') && e('div', null, e('small', null, 'Author-declared requirements (checked before running):'),
+      e('ul', null, ...((props.recipes ?? []).find(r => r.id === operation)?.requirements ?? []).map((text, i) => e('li', { key: i }, text)))),
     e('p', { style: { margin: '6px 0', fontSize: '0.9em' } },
       `Click a ${spec[3][active]} on the drawing for “${spec[2][active]}”, or use the dropdowns. Drag empty space to pan; scroll to zoom.`),
     ...spec[2].map((role, i) => e('label', { key: i, style: { display: 'block', margin: '5px 0' } }, `${role} `,

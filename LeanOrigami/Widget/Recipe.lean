@@ -1,3 +1,4 @@
+import LeanOrigami.Widget.Requirements
 import LeanOrigami.Construction.Recipe
 import LeanOrigami.Construction.Checker
 import Lean.Data.Json.FromToJson
@@ -46,6 +47,8 @@ structure RecipeTemplate where
   steps : List RecipeOperation := []
   output : Nat := 0
   groups : Array RecipeGroup := #[]
+  requirements : Array Condition := #[]
+  checks : Array RecipeRequirement := #[]
   deriving Repr
 
 /-- Read a geometric object's kind without inspecting its coordinates. -/
@@ -79,11 +82,20 @@ def RecipeTemplate.validate (recipe : RecipeTemplate) : Except String ObjectKind
     if parameter.name.isEmpty || names.contains parameter.name then
       throw "Recipe parameter names must be nonempty and distinct."
     names := names.push parameter.name
+  let valid (available : Array ObjectKind) (condition : Condition) :=
+    condition.valid (fun i => available[i]? == some .point) (fun i => available[i]? == some .line)
+  for condition in recipe.requirements do
+    unless valid kinds condition do
+      throw "A requirement has a missing/wrong-kind input or a zero denominator."
   for step in recipe.steps do
     for (index, expected) in step.inputs do
       let some actual := kinds[index]? | throw s!"Recipe reference {index} is missing or forward."
       unless actual == expected do throw s!"Recipe reference {index} has the wrong kind."
     kinds := kinds.push (match step with | .fold _ => .line | .intersect _ _ => .point)
+  for check in recipe.checks do
+    unless check.owner ≤ check.before && check.before ≤ recipe.steps.length &&
+        valid (kinds.extract 0 (recipe.parameters.size + check.before)) check.condition do
+      throw "A nested requirement has invalid references or a misplaced check."
   let some output := kinds[recipe.output]? | throw "The recipe output does not exist."
   for group in recipe.groups do
     unless group.count > 0 && group.start + group.count ≤ recipe.steps.length &&
@@ -117,13 +129,17 @@ def RecipeTemplate.source (recipe : RecipeTemplate) : String := Id.run do
       s!".fold (.axiom{n} " ++ String.intercalate " " (step.inputs.map fun (i, _) => s!"⟨{i}⟩") ++ ")"
   return "{ parameters := " ++ parameters ++ ", steps := [" ++
     String.intercalate ", " steps ++ s!"], output := {recipe.output}, groups := " ++
-    arraySource (recipe.groups.map RecipeGroup.source) ++ " }"
+    arraySource (recipe.groups.map RecipeGroup.source) ++ ", requirements := " ++
+    arraySource (recipe.requirements.map conditionSource) ++ ", checks := " ++
+    arraySource (recipe.checks.map fun check =>
+      s!"⟨{check.before}, {check.owner}, {conditionSource check.condition}⟩") ++ " }"
 
 /-- Midpoint of distinct points: join, bisect, intersect. Coincident inputs
 are rejected by the primitive guards; no arbitrary crease is chosen. -/
 def midpointRecipe : RecipeTemplate := {
   parameters := #[⟨"First point", .point⟩, ⟨"Second point", .point⟩]
   steps := [.fold (.axiom1 ⟨0⟩ ⟨1⟩), .fold (.axiom2 ⟨0⟩ ⟨1⟩), .intersect ⟨2⟩ ⟨3⟩]
-  output := 4 }
+  output := 4
+  requirements := #[.not (.samePoint 0 1)] }
 
 end LeanOrigami.Widget

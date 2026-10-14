@@ -14,6 +14,7 @@ Submission elaborates and kernel-checks a persistent proof against the captured
 goal before returning a versioned edit. The widget is not a proof oracle.
 `origami_recipe` uses the same panel outside proofs, saving parameterized
 operations whose exact results are discovered again for each invocation.
+Declared requirements are edited and checked through the shared workspace API.
 -/
 
 namespace LeanOrigami.Widget
@@ -66,6 +67,7 @@ structure Interaction where
   bits : Nat := 48
   recipeName : String := ""
   sampleInputs : Array SampleInput := #[]
+  requirement : RequirementInput := {}
   deriving RpcEncodable
 
 /-- A new immutable snapshot, with an optional already checked source edit. -/
@@ -176,7 +178,7 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
   if workspaceState.any (fun state => !state.ready) &&
       !(["start", "render", "samples"].contains request.action) then
     throw (.invalidParams "Name the recipe and set up its inputs first.")
-  if session.running.isSome && !(["start", "render", "choose", "undo", "samples", "resetSamples"].contains request.action) then
+  if session.running.isSome && !(["start", "render", "choose", "undo", "samples", "resetSamples", "addRequirement", "removeRequirement"].contains request.action) then
     throw (.invalidParams "Finish or cancel the current recipe first.")
   match request.action with
   | "start" | "render" => pure ()
@@ -209,6 +211,13 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     workspaceState := some state
     session := changed
     point := session.result.getD 0
+  | "addRequirement" | "removeRequirement" =>
+    let some state := workspaceState | throw (.invalidParams "Requirements can only be edited in a recipe workspace.")
+    let input := if request.action == "addRequirement" then some request.requirement else none
+    let (state, changed) ← result (state.editRequirement session request.point input request.choice)
+    workspaceState := some state
+    session := changed
+    point := session.result.getD 0
   | "undo" =>
     if workspaceState.any (·.replaying) then
       throw (.invalidParams "Edit or reset samples to recover the retained recipe.")
@@ -238,14 +247,17 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
   | _ => throw (.invalidParams "Unknown construction action.")
   workspaceState := workspaceState.map fun state =>
     { state with replaying := state.replaying && session.running.isSome }
-  let workspaceView : Option WorkspaceView := workspaceState.map fun (state : WorkspaceState) => WorkspaceView.mk state.name state.ready
-    (gate.workspace.any (fun w => !w.name.isEmpty)) state.inputs state.replaying
+  let workspaceView : Option WorkspaceView := workspaceState.map fun (state : WorkspaceState) =>
+    let (requirements, nestedRequirements) := state.requirementViews session
+    { name := state.name, ready := state.ready
+      nameLocked := gate.workspace.any (fun w => !w.name.isEmpty)
+      inputs := state.inputs, replaying := state.replaying, requirements, nestedRequirements }
   return { session := ← WithRpcRef.mk { snapshot with session, workspace := workspaceState }
            view := session.view request.bits, edit, source, point, coordinate, workspace := workspaceView }
 
 /-- Interactive SVG panel; JavaScript is source-controlled and needs no bundler. -/
 @[widget_module]
-def ConstructionPanel : Component PanelProps where
+def ConstructionPanel : ProofWidgets.Component PanelProps where
   javascript := include_str ".." / "widget" / "construction.js"
 
 /-- Attach the same panel to a tactic or a declaration command. -/
@@ -265,7 +277,9 @@ private def registerPanel (stx : Syntax) (target : String) (goal saved : Option 
     target, saved := saved.isSome || savedRecipe
     workspace := workspace.isSome
     parameters := workspace.map (·.parameters) |>.getD #[]
-    recipes := library.map fun r => ⟨r.id, r.name, r.template.parameters⟩ }
+    recipes := library.map fun r => ⟨r.id, r.name, r.template.parameters,
+      r.template.requirements.map (conditionDescription (fun i =>
+        (r.template.parameters[i]?.map (·.name)).getD s!"object {i}"))⟩ }
   Lean.Widget.savePanelWidgetInfo ConstructionPanel.javascriptHash (rpcEncode props) stx
 
 /-- Open or prove a saved construction. History annotations are presentation

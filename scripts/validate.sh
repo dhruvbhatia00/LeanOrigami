@@ -31,3 +31,7 @@ lake lean .lake/recipes/Replay.lean
 
 # GUI sample setup, changed-input replay, and exact sample persistence.
 lake lean LeanOrigamiTests/SampleWorkspace.lean -- --run LeanOrigamiTests/SampleWorkspace.lean
+
+# Exact condition proofs and focused recipe requirement integration.
+lake lean LeanOrigamiTests/Conditions.lean
+lake lean LeanOrigamiTests/RecipeRequirements.lean

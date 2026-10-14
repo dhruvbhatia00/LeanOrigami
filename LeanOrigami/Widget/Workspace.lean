@@ -26,6 +26,7 @@ structure RecipeMenuItem where
   id : String
   name : String
   parameters : Array RecipeParameter
+  requirements : Array String := #[]
   deriving ToJson, FromJson
 
 /-- Capture the command's original spelling and elaborated data for reopening
@@ -105,6 +106,12 @@ structure WorkspaceState where
   template : Option RecipeTemplate := none
   replaying : Bool := false
 
+/-- Sample status is separate from any universal correctness claim. -/
+structure RequirementView where
+  description : String
+  status : String
+  deriving ToJson, FromJson
+
 /-- Only display/setup data crosses the RPC boundary. -/
 structure WorkspaceView where
   name : String
@@ -112,25 +119,9 @@ structure WorkspaceView where
   nameLocked : Bool
   inputs : Array SampleInput
   replaying : Bool
+  requirements : Array RequirementView := #[]
+  nestedRequirements : Array RequirementView := #[]
   deriving ToJson, FromJson
-
-/-- Parse exact integer/fraction input. Never parse a machine float or accept
-zero denominators. The size bound prevents accidental enormous input strings. -/
-def sampleRational (text : String) : Except String Rat := do
-  if text.length > 128 then throw "Use a shorter integer or fraction."
-  let pieces := (text.trimAscii.toString.splitOn "/").map (·.trimAscii.toString)
-  let parse (s : String) : Except String Int :=
-    match s.toInt? with
-    | some n => .ok n
-    | none => .error "Enter an integer or fraction, such as -2 or 1/3."
-  match pieces with
-  | [n] => return (← parse n : Int)
-  | [n, d] =>
-    let numerator ← parse n
-    let denominator ← parse d
-    if denominator == 0 then throw "A sample fraction cannot have denominator zero."
-    return (numerator : Rat) / (denominator : Rat)
-  | _ => throw "Enter an integer or fraction, such as -2 or 1/3."
 
 private def ratSource (q : Rat) : String := s!"({q.num} / {q.den} : LeanOrigami.Scalar)"
 
@@ -172,6 +163,44 @@ private def WorkspaceState.replay (state : WorkspaceState) (recipe : RecipeTempl
   let session ← ({ seeds, objects := seeds } : Session).useRecipe "" recipe
     (Array.range seeds.length) (retainFailure := true)
   return ({ state with template := some recipe, replaying := session.running.isSome }, session)
+
+/-- Edit only author-declared input conditions. Inherited conditions belong to
+calls, and remain attached to them. Boolean combinations replace their operands
+so OR does not accidentally keep enforcing both original conditions. -/
+def WorkspaceState.editRequirement (state : WorkspaceState) (session : Session) (output : Nat)
+    (input : Option RequirementInput) (removeIndex : Nat) : Except String (WorkspaceState × Session) := do
+  if session.running.isSome && !state.replaying then
+    throw "Finish or cancel the nested recipe before editing requirements."
+  let recipe ← state.record session output
+  let requirements ← match input with
+    | none => do
+      unless removeIndex < recipe.requirements.size do throw "This requirement no longer exists."
+      pure (recipe.requirements.eraseIdxIfInBounds removeIndex)
+    | some input => do
+      let condition ← input.condition recipe.requirements
+      let selected := input.references.extract 0 (if input.family == "not" then 1 else 2)
+      let old : Array Condition := if ["and", "or", "not"].contains input.family then
+        recipe.requirements.zipIdx.filterMap (fun (condition, i) =>
+          if selected.contains i then none else some condition) else recipe.requirements
+      pure (old.push condition)
+  let recipe := { recipe with requirements }
+  let _ ← recipe.validate
+  state.replay recipe
+
+/-- Exact statuses for the applied samples. Later inherited checks remain
+pending until their referenced construction objects have been produced. -/
+def WorkspaceState.requirementViews (state : WorkspaceState) (session : Session) :
+    Array RequirementView × Array RequirementView := Id.run do
+  let recipe := if state.replaying then state.template else none
+  let requirements := recipe.map (·.requirements) |>.getD session.requirements
+  let checks := recipe.map (·.checks) |>.getD session.checks
+  let name (i : Nat) := (state.inputs[i]?.map (·.name)).getD s!"object {i}"
+  let status (condition : Condition) (objects : List (Object Scalar)) :=
+    if condition.checkObjects objects then "Satisfied" else "Not satisfied"
+  return (requirements.map (fun condition =>
+    ⟨conditionDescription name condition, status condition session.seeds⟩),
+    checks.map (fun check => ⟨conditionDescription name check.condition,
+      if check.before > session.program.length then "Not reached" else status check.condition session.objects⟩))
 
 /-- Apply rational replacements, preserving untouched exact inputs. Parameter
 identity is fixed after setup; arbitrary samples never become proof seeds. -/
