@@ -415,3 +415,42 @@ assert.equal(requests[0].params.choice, 0);
 requests.shift().resolve({ ...grouped, workspace }); await flush();
 assert.ok(!button('Prepare recipe').props.disabled);
 console.log('PASS: requirement form, exact-check failure display, and removal while replay is blocked');
+
+// Named results remain ordinary object references, and can be removed separately.
+input('Output name').props.onChange({ target: { value: 'Midpoint' } }); render();
+button('Name this output').props.onClick(); render();
+assert.equal(requests[0].params.action, 'nameOutput');
+assert.equal(requests[0].params.outputName, 'Midpoint');
+assert.equal(requests[0].params.point, 4);
+requests.shift().resolve({ ...grouped, workspace, view: { ...grouped.view,
+  outputs: [{ name: 'Midpoint', index: 4 }] } }); await flush();
+assert.ok(walk(tree).some(n => n.tag === 'option' && String(n.children).includes('Midpoint')));
+button('Remove name').props.onClick(); render();
+assert.equal(requests[0].params.action, 'removeOutput');
+assert.equal(requests[0].params.choice, 0);
+requests.shift().resolve({ ...grouped, workspace }); await flush();
+
+// The server supplies specification status for the actual registered template.
+panelProps = { ...panelProps, recipes: [{ ...panelProps.recipes[0], specification: 'Result.x = (A.x + B.x) / 2' }] };
+selectors()[0].props.onChange({ target: { value: 'recipe:midpoint' } }); render();
+assert.ok(walk(tree).some(n => n.props['aria-label'] === 'Proved specification'));
+panelProps = { ...panelProps, recipes: [{ ...panelProps.recipes[0], specification: null }] }; render();
+assert.ok(!walk(tree).some(n => n.props['aria-label'] === 'Proved specification'));
+console.log('PASS: named output controls and recipe-specific specification status');
+
+// Changing the submitted/default output must immediately hide a root badge.
+gate = 'proved-workspace'; render();
+requests.shift().resolve({ ...grouped, workspace: { ...workspace,
+  specification: 'Result.x = 1/2', specificationOutput: 4 }, view: { ...grouped.view,
+  groups: [{ ...grouped.view.groups[0], outputs: [
+    { name: 'Midpoint', index: 4 }, { name: 'Bisector', index: 3 }] }] } }); await flush();
+assert.ok(walk(tree).some(n => n.props['aria-label'] === 'Workspace specification'));
+walk(tree).find(n => n.tag === 'select' && n.props['aria-label'] === 'Recipe output')
+  .props.onChange({ target: { value: '0' } }); render();
+assert.ok(!walk(tree).some(n => n.props['aria-label'] === 'Workspace specification'));
+const namedGroup = walk(tree).find(n => n.tag === 'summary' && String(n.children).includes('Bisector: L3'));
+assert.ok(namedGroup);
+namedGroup.props.onMouseMove(); render();
+assert.equal(drawn(3).props['data-history-role'], 'output');
+assert.equal(drawn(4).props['data-history-role'], 'output');
+console.log('PASS: stale output badge prevention and highlighting every named group result');

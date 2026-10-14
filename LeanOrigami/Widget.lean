@@ -66,6 +66,7 @@ structure Interaction where
   coordinate : String := "x"
   bits : Nat := 48
   recipeName : String := ""
+  outputName : String := ""
   sampleInputs : Array SampleInput := #[]
   requirement : RequirementInput := {}
   deriving RpcEncodable
@@ -218,6 +219,13 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     workspaceState := some state
     session := changed
     point := session.result.getD 0
+  | "nameOutput" | "removeOutput" =>
+    unless workspaceState.isSome do throw (.invalidParams "Name outputs in a recipe workspace.")
+    if request.action == "nameOutput" then
+      session ← result (session.nameOutput request.outputName request.point)
+    else
+      unless request.choice < session.outputs.size do throw (.invalidParams "This output name no longer exists.")
+      session := { session with outputs := session.outputs.eraseIdxIfInBounds request.choice }
   | "undo" =>
     if workspaceState.any (·.replaying) then
       throw (.invalidParams "Edit or reset samples to recover the retained recipe.")
@@ -249,9 +257,12 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     { state with replaying := state.replaying && session.running.isSome }
   let workspaceView : Option WorkspaceView := workspaceState.map fun (state : WorkspaceState) =>
     let (requirements, nestedRequirements) := state.requirementViews session
+    let currentRecipe := (state.record session point).toOption
     { name := state.name, ready := state.ready
       nameLocked := gate.workspace.any (fun w => !w.name.isEmpty)
-      inputs := state.inputs, replaying := state.replaying, requirements, nestedRequirements }
+      inputs := state.inputs, replaying := state.replaying, requirements, nestedRequirements
+      specification := currentRecipe.bind arithmeticSpecification
+      specificationOutput := currentRecipe.map (·.output) |>.getD 0 }
   return { session := ← WithRpcRef.mk { snapshot with session, workspace := workspaceState }
            view := session.view request.bits, edit, source, point, coordinate, workspace := workspaceView }
 
@@ -279,7 +290,8 @@ private def registerPanel (stx : Syntax) (target : String) (goal saved : Option 
     parameters := workspace.map (·.parameters) |>.getD #[]
     recipes := library.map fun r => ⟨r.id, r.name, r.template.parameters,
       r.template.requirements.map (conditionDescription (fun i =>
-        (r.template.parameters[i]?.map (·.name)).getD s!"object {i}"))⟩ }
+        (r.template.parameters[i]?.map (·.name)).getD s!"object {i}")),
+      arithmeticSpecification r.template⟩ }
   Lean.Widget.savePanelWidgetInfo ConstructionPanel.javascriptHash (rpcEncode props) stx
 
 /-- Open or prove a saved construction. History annotations are presentation

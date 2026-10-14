@@ -1077,7 +1077,7 @@ contracts; general symbolic proof generation remains Phase 10.
 
 ### Phase 7 — Recipe contracts, proved operations, and authoring guidance
 
-**Approved scope, 2026-10-13; checkpoint 1 complete.** Build on completed Phase 6,
+**Approved scope, 2026-10-13; checkpoints 1–2 complete.** Build on completed Phase 6,
 including the standalone recipe editor and sample previews. Deliver the small
 usability improvements first, then shared condition/specification support,
 then independently auditable recipe families. Follow AGENTS.md throughout.
@@ -1095,7 +1095,7 @@ still certify the expanded construction through the existing kernel checker.
 1. **Requirements and authoring guidance (7.1–7.3; complete).** Button
    explanations, automatic sample names, the exact condition language and its
    interpretation proofs, and editable/persisted/enforced recipe requirements.
-2. **Contracts and arithmetic (7.4–7.5; pending).** Proved specifications,
+2. **Contracts and arithmetic (7.4–7.5; complete).** Proved specifications,
    branch policies, named outputs, and arithmetic recipes.
 3. **Coordinates and roots (7.6–7.7; pending).** Projections, coordinate and
    distance transfer, square roots, and cube roots with their specifications.
@@ -1107,7 +1107,7 @@ keep validation light: use file-level LSP diagnostics, focused examples,
 targeted dependency builds, and selected live widget checks. Defer the broad
 integrated validation to checkpoint 4; do not repeatedly run the full suite.
 Record precisely which checks were performed at each checkpoint. The current
-implementation request covers checkpoint 1 only.
+implementation request covers checkpoint 2; checkpoints 3–4 remain deferred.
 
 **Checkpoint 1 audit (2026-10-13): complete.** Exact condition semantics and
 embedding proofs, persisted/enforced requirements, default names, and control
@@ -1116,8 +1116,21 @@ focused kernel/runtime/browser regressions, and selected live authoring,
 rejection/recovery, and save/reopen checks passed. A React sibling-key collision
 found live was corrected and covered by the browser regression; the corrected
 bundle was rebuilt. Broad phase integration remains reserved for checkpoint 4.
-See [the detailed audit](docs/phase-7-requirements.md). Checkpoint 2 is next and
-has not started.
+See [the detailed audit](docs/phase-7-requirements.md).
+
+**Checkpoint 2 audit (2026-10-13): complete.** The six signed arithmetic
+operations have primitive-execution and output proofs, matching visual
+contracts, exact frame/input requirements, and a proved diagonal branch policy.
+Named point/line outputs survive nested calls, saved source, and replay; old
+single-output history constructors remain readable. Specification badges are
+associated with the complete template and disappear after relevant edits.
+Complete LSP diagnostics, axiom audits, focused executable/kernel regressions,
+targeted widget builds, browser component checks, and live signed/zero sample
+replay and multiple-output save/reopen passed. Explicit types in the integration
+test avoid slow reverse field lookup. No full phase suite was run. See
+[the detailed audit](docs/phase-7-contracts.md) and
+[the arithmetic demo](LeanOrigamiDemos/ArithmeticRecipes.lean). Checkpoints 3–4
+remain pending.
 
 #### 7.1 Button explanations and automatic sample names
 
@@ -1184,6 +1197,15 @@ registration API must require an executable checker and its correctness theorem.
 **Acceptance:** user-authored recipes can declare supported conditions through
 point-and-click controls. Invocation enforces them exactly, and the interface
 labels them as author-declared requirements rather than proved specifications.
+
+**Checkpoint 2 work order.** First connect the arithmetic recipes to proofs
+about their actual primitive execution and exact outputs. Then extend the
+shared recipe interface with named outputs and explicit branch/output policies,
+and connect registered contracts to the exact recipe being invoked. Finally
+expose the arithmetic library in the widget and check a compact set of
+boundary cases, nested calls, and saved replay. Existing constructibility
+theorems alone do not justify a specification badge. Preserve the current
+single-output source format and kernel certification path.
 
 #### 7.4 Specifications, branch policies, and named outputs
 

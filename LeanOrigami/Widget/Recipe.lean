@@ -30,14 +30,52 @@ inductive RecipeOperation where
   | intersect (left right : LineRef)
   deriving Repr
 
+/-- A named result refers to an existing object; it never introduces geometry.
+The kind is determined from the referenced object during validation. -/
+structure RecipeOutput where
+  name : String
+  index : Nat
+  deriving Repr, Lean.ToJson, Lean.FromJson
+
+/-- History keeps its original five-field constructor. The last field can
+still be a plain index, or can carry named results in new saved constructions. -/
+structure RecipeResults where
+  index : Nat
+  names : Array RecipeOutput := #[]
+  deriving Repr
+
+instance (n : Nat) : OfNat RecipeResults n := ⟨⟨n, #[]⟩⟩
+instance : Coe Nat RecipeResults := ⟨fun index => ⟨index, #[]⟩⟩
+instance : CoeOut RecipeResults Nat := ⟨RecipeResults.index⟩
+
 /-- A named span in a flattened program. Step offsets exclude seed objects. -/
 structure RecipeGroup where
   name : String
   start : Nat
   count : Nat
   inputs : Array Nat
-  output : Nat
-  deriving Repr, Lean.ToJson, Lean.FromJson
+  output : RecipeResults
+  deriving Repr
+
+/-- Named results of a history group, supplementing its default result. -/
+def RecipeGroup.outputs (group : RecipeGroup) : Array RecipeOutput := group.output.names
+
+-- The browser retains its flat representation, including old single-output
+-- metadata. The Lean source representation above also accepts old tuples.
+instance : Lean.ToJson RecipeGroup where
+  toJson group := Lean.Json.mkObj [
+    ("name", Lean.toJson group.name), ("start", Lean.toJson group.start),
+    ("count", Lean.toJson group.count), ("inputs", Lean.toJson group.inputs),
+    ("output", Lean.toJson group.output.index), ("outputs", Lean.toJson group.outputs)]
+
+instance : Lean.FromJson RecipeGroup where
+  fromJson? json := do
+    let outputs ← match json.getObjVal? "outputs" with
+      | .error _ => pure #[]
+      | .ok value => Lean.fromJson? value
+    return ⟨← json.getObjValAs? String "name", ← json.getObjValAs? Nat "start",
+      ← json.getObjValAs? Nat "count", ← json.getObjValAs? (Array Nat) "inputs",
+      ⟨← json.getObjValAs? Nat "output", outputs⟩⟩
 
 /-- A reusable construction with local parameter indices followed by outputs.
 Nested calls are flattened when recorded, retaining their inspectable groups.
@@ -49,7 +87,13 @@ structure RecipeTemplate where
   groups : Array RecipeGroup := #[]
   requirements : Array Condition := #[]
   checks : Array RecipeRequirement := #[]
+  outputs : Array RecipeOutput := #[]
   deriving Repr
+
+/-- Single-output source remains valid. Named outputs supplement the default
+output used by existing callers and by automatic point selection. -/
+def RecipeTemplate.namedOutputs (recipe : RecipeTemplate) : Array RecipeOutput :=
+  if recipe.outputs.isEmpty then #[⟨"Result", recipe.output⟩] else recipe.outputs
 
 /-- Read a geometric object's kind without inspecting its coordinates. -/
 def objectKind {K : Type*} [Field K] : Object K → ObjectKind
@@ -60,6 +104,44 @@ def objectKind {K : Type*} [Field K] : Object K → ObjectKind
 def RecipeOperation.ofInstruction {K : Type*} [Zero K] [One K] : Instruction K → RecipeOperation
   | .fold request _ => .fold request
   | .intersect l r _ => .intersect l r
+
+/-- A concrete completion uses exactly the template's primitives and passes
+both the ordinary construction checker and every declared timed condition.
+The final state length rules out referring to nonexistent future objects. -/
+structure RecipeTemplate.Completion {K : Type} [Field K] [LinearOrder K] [IsStrictOrderedRing K]
+    (recipe : RecipeTemplate) (inputs : Program.State K) (program : Program K)
+    (final : Program.State K) : Prop where
+  shape : program.map RecipeOperation.ofInstruction = recipe.steps
+  execution : Program.execute inputs program = .ok final
+  length : final.length = inputs.length + recipe.steps.length
+  requirements : recipe.requirements.all (Condition.checkObjects inputs) = true
+  checks : recipe.checks.all (fun check =>
+    check.condition.checkObjects (final.take (inputs.length + check.before))) = true
+  inputs_valid : inputs.length = recipe.parameters.size ∧
+    (inputs.zip recipe.parameters.toList).all (fun (object, parameter) =>
+      objectKind object == parameter.kind) = true
+
+/-- A specification is tied to one exact template, a stated family of inputs,
+and an exact output condition. Success is required in addition to soundness;
+a recipe which always fails cannot acquire a useful contract this way. -/
+structure RecipeContract {K : Type} [Field K] [LinearOrder K] [IsStrictOrderedRing K]
+    {Parameters : Type} (recipe : RecipeTemplate) (inputs : Parameters → Program.State K)
+    (domain : Parameters → Prop) (postcondition : Condition) : Prop where
+  sound : ∀ parameters, domain parameters → ∀ program final,
+    recipe.Completion (inputs parameters) program final → postcondition.Satisfied final
+  succeeds : ∀ parameters, domain parameters → ∃ program final,
+    recipe.Completion (inputs parameters) program final
+
+/-- A final-boundary condition is a genuine statement about the final exact
+objects of any completion, independent of candidate enumeration order. -/
+theorem RecipeTemplate.Completion.final_condition {K : Type} [Field K] [LinearOrder K]
+    [IsStrictOrderedRing K] {recipe : RecipeTemplate} {inputs final : Program.State K}
+    {program : Program K} (completion : recipe.Completion inputs program final)
+    (check : RecipeRequirement) (member : check ∈ recipe.checks)
+    (boundary : check.before = recipe.steps.length) : check.condition.Satisfied final := by
+  have accepted := (Array.all_eq_true_iff_forall_mem.mp completion.checks) check member
+  rw [boundary, ← completion.length, List.take_length] at accepted
+  exact (Condition.checkObjects_iff _ _).mp accepted
 
 /-- Required references and kinds in operation order. -/
 def RecipeOperation.inputs : RecipeOperation → List (Nat × ObjectKind)
@@ -97,12 +179,66 @@ def RecipeTemplate.validate (recipe : RecipeTemplate) : Except String ObjectKind
         valid (kinds.extract 0 (recipe.parameters.size + check.before)) check.condition do
       throw "A nested requirement has invalid references or a misplaced check."
   let some output := kinds[recipe.output]? | throw "The recipe output does not exist."
+  let mut outputNames : Array String := #[]
+  for result in recipe.namedOutputs do
+    if result.name.trimAscii.toString.isEmpty || outputNames.contains result.name then
+      throw "Output names must be nonblank and distinct."
+    unless kinds[result.index]?.isSome do throw s!"Output {result.name} does not exist."
+    outputNames := outputNames.push result.name
   for group in recipe.groups do
     unless group.count > 0 && group.start + group.count ≤ recipe.steps.length &&
         group.inputs.all (· < recipe.parameters.size + group.start) &&
-        group.output < recipe.parameters.size + group.start + group.count do
+        group.output.index < recipe.parameters.size + group.start + group.count do
       throw "Invalid recipe history group."
+    for result in group.outputs do
+      unless result.index < recipe.parameters.size + group.start + group.count do
+        throw "A named history output does not exist at the end of its call."
   return output
+
+/-- Filter exact creases by the conditions whose objects become available at
+this boundary. Later conditions remain continuation checks; no sample index is
+reused, and multiple surviving creases still require a user choice. -/
+def RecipeRequirement.filterCreases {K : Type} [Field K] [LinearOrder K]
+    (checks : Array RecipeRequirement) (boundary : Nat) (objects : Program.State K)
+    (choices : List (Line K)) : List (Line K) :=
+  choices.filter fun crease => checks.all fun check =>
+    check.before != boundary || check.condition.checkObjects (objects ++ [.line crease])
+
+/-- Filtering neither invents creases nor loses any crease satisfying the
+conditions that can be checked now. -/
+theorem RecipeRequirement.mem_filterCreases {K : Type} [Field K] [LinearOrder K]
+    (checks : Array RecipeRequirement) (boundary : Nat) (objects : Program.State K)
+    (choices : List (Line K)) (crease : Line K) :
+    crease ∈ filterCreases checks boundary objects choices ↔
+      crease ∈ choices ∧ ∀ check ∈ checks, check.before = boundary →
+        check.condition.Satisfied (objects ++ [.line crease]) := by
+  simp only [filterCreases, List.mem_filter, Array.all_eq_true_iff_forall_mem,
+    Bool.or_eq_true, bne_iff_ne, Condition.checkObjects_iff]
+  constructor
+  · rintro ⟨member, conditions⟩
+    refine ⟨member, fun check hc hb => ?_⟩
+    exact (conditions check hc).resolve_left (not_not_intro hb)
+  · rintro ⟨member, conditions⟩
+    refine ⟨member, fun check hc => ?_⟩
+    by_cases hb : check.before = boundary
+    · exact Or.inr (conditions check hc hb)
+    · exact Or.inl hb
+
+/-- Automatic selection is justified when a valid desired crease exists and
+is the only one passing the policy. Candidate order has no role in the result. -/
+theorem RecipeRequirement.filterCreases_singleton {K : Type} [Field K] [LinearOrder K]
+    (checks : Array RecipeRequirement) (boundary : Nat) (objects : Program.State K)
+    (choices : List (Line K)) (crease : Line K) (distinct : choices.Nodup)
+    (present : crease ∈ filterCreases checks boundary objects choices)
+    (unique : ∀ candidate ∈ filterCreases checks boundary objects choices, candidate = crease) :
+    filterCreases checks boundary objects choices = [crease] := by
+  apply List.Perm.eq_singleton
+  apply (List.perm_ext_iff_of_nodup (distinct.filter _) (by simp)).mpr
+  intro candidate
+  simp only [List.mem_singleton]
+  constructor
+  · exact unique candidate
+  · rintro rfl; exact present
 
 /-- Relocate a template operation into a calling program. -/
 def RecipeOperation.remap (f : Nat → Nat) : RecipeOperation → RecipeOperation
@@ -111,10 +247,16 @@ def RecipeOperation.remap (f : Nat → Nat) : RecipeOperation → RecipeOperatio
 
 private def arraySource (xs : Array String) := "#[" ++ String.intercalate ", " xs.toList ++ "]"
 
+/-- Serialize output names as escaped literals and stable object references. -/
+def RecipeOutput.source (output : RecipeOutput) : String :=
+  s!"⟨{Lean.Json.compress (Lean.toJson output.name)}, {output.index}⟩"
+
 /-- Stable ordinary Lean source; strings use Lean-compatible escaped literals. -/
 def RecipeGroup.source (group : RecipeGroup) : String :=
   s!"⟨{Lean.Json.compress (Lean.toJson group.name)}, {group.start}, {group.count}, " ++
-    arraySource (group.inputs.map toString) ++ s!", {group.output}⟩"
+    arraySource (group.inputs.map toString) ++ ", " ++
+    (if group.outputs.isEmpty then toString group.output.index else
+      "{ index := " ++ toString group.output.index ++ ", names := " ++ arraySource (group.outputs.map RecipeOutput.source) ++ " }") ++ "⟩"
 
 /-- Serialize the small declarative format, without native values or opaque IDs. -/
 def RecipeTemplate.source (recipe : RecipeTemplate) : String := Id.run do
@@ -132,7 +274,8 @@ def RecipeTemplate.source (recipe : RecipeTemplate) : String := Id.run do
     arraySource (recipe.groups.map RecipeGroup.source) ++ ", requirements := " ++
     arraySource (recipe.requirements.map conditionSource) ++ ", checks := " ++
     arraySource (recipe.checks.map fun check =>
-      s!"⟨{check.before}, {check.owner}, {conditionSource check.condition}⟩") ++ " }"
+      s!"⟨{check.before}, {check.owner}, {conditionSource check.condition}⟩") ++
+    ", outputs := " ++ arraySource (recipe.outputs.map RecipeOutput.source) ++ " }"
 
 /-- Midpoint of distinct points: join, bisect, intersect. Coincident inputs
 are rejected by the primitive guards; no arbitrary crease is chosen. -/

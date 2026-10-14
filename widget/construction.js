@@ -121,6 +121,7 @@ export default function ConstructionPanel(props) {
   const [controlHelp, setControlHelp] = React.useState('');
   const [extraBits, setExtraBits] = React.useState(0), [busy, setBusy] = React.useState('');
   const [message, setMessage] = React.useState(''), [submission, setSubmission] = React.useState(null);
+  const [outputName, setOutputName] = React.useState('');
   const [finalPoint, setFinalPoint] = React.useState(1), [coordinate, setCoordinate] = React.useState('x');
   const [hover, setHover] = React.useState(null), [inspection, setInspection] = React.useState('');
   const [historyIndex, setHistoryIndex] = React.useState(null);
@@ -144,6 +145,9 @@ export default function ConstructionPanel(props) {
   const selectedGroup = typeof historyIndex === 'string' ? scene?.view.groups?.[Number(historyIndex.slice(7))] : null;
   const historyStep = selectedGroup ? { ...selectedGroup, description: selectedGroup.name } :
     scene?.view.history?.[historyIndex] ?? null;
+  const namedOutputs = [...(scene?.view.outputs ?? []), ...(scene?.view.groups ?? []).flatMap(g => g.outputs ?? [])];
+  const outputNames = index => namedOutputs.filter(o => o.index === index).map(o => o.name).join(', ');
+  const historyOutputs = historyStep ? (historyStep.outputs?.length ? historyStep.outputs.map(o => o.index) : [historyStep.output]) : [];
   const objectLabel = index => `${(objects.find(o => o.index === index) ?? storedObjects.find(o => o.index === index))?.kind === 'point' ? 'P' : 'L'}${index}`;
   const bits = precisionFor(viewport.width, extraBits);
   function install(result) { sceneRef.current = result; setScene(result); setHistoryIndex(null); }
@@ -156,7 +160,7 @@ export default function ConstructionPanel(props) {
       const response = await rpc.call('LeanOrigami.Widget.interact', {
         gate: props.gate, session: sceneRef.current?.session ?? null,
         action, operation, inputs: ['preview', 'intersect', 'recipe'].includes(action) ? inputs : [],
-        choice: 0, point: finalPoint, coordinate, bits, recipeName: '', sampleInputs: [], requirement: { family: 'distinctPoints', references: [], values: [] }, ...overrides,
+        choice: 0, point: finalPoint, coordinate, bits, recipeName: '', sampleInputs: [], outputName: '', requirement: { family: 'distinctPoints', references: [], values: [] }, ...overrides,
       });
       if (!isCurrent(generation, token)) return;
       install(response);
@@ -242,7 +246,7 @@ export default function ConstructionPanel(props) {
   function draw(object, candidate) {
     const values = visibleNumbers(object), selected = !candidate && inputs.includes(object.index);
     const historyRole = !candidate && historyStep ?
-      (object.index === historyStep.output ? 'output' : historyStep.inputs.includes(object.index) ? 'input' : null) : null;
+      (historyOutputs.includes(object.index) ? 'output' : historyStep.inputs.includes(object.index) ? 'input' : null) : null;
     const color = historyRole === 'output' || candidate ? '#e87925' :
       historyRole === 'input' || (!historyStep && selected) ? '#4ea1ff' : 'currentColor';
     const style = { cursor: 'pointer', opacity: historyStep && !historyRole ? 0.2 : 1 };
@@ -325,7 +329,7 @@ export default function ConstructionPanel(props) {
             onMouseMove: () => setHistoryIndex(groupKey), onFocus: () => setHistoryIndex(groupKey),
             onMouseLeave: () => setHistoryIndex(current => current === groupKey ? null : current),
             onBlur: () => setHistoryIndex(current => current === groupKey ? null : current),
-          }, `${group.name} (${group.inputs.map(objectLabel).join(', ')}) → ${objectLabel(group.output)}`),
+          }, `${group.name} (${group.inputs.map(objectLabel).join(', ')}) → ${group.outputs?.length ? group.outputs.map(o => `${o.name}: ${objectLabel(o.index)}`).join(', ') : objectLabel(group.output)}`),
           e('ol', null, ...historyRows(i, i + group.count, [...excluded, group])))));
         i += group.count;
       } else { rows.push(historyRow(history[i], i)); i++; }
@@ -347,13 +351,13 @@ export default function ConstructionPanel(props) {
         setViewport({ ...d.viewport, x: d.viewport.x - (ev.clientX - d.x) * scale, y: d.viewport.y + (ev.clientY - d.y) * scale }); } },
       onPointerUp: ev => { if (sampleDrag.current !== null) { const index = sampleDrag.current; sampleDrag.current = null; placeSample(ev, index); } drag.current = null; }, onPointerCancel: () => { drag.current = null; sampleDrag.current = null; setTentative(null); },
     }, e('g', { pointerEvents: 'none', stroke: 'currentColor', fill: 'currentColor', strokeOpacity: 0.2, fillOpacity: 0.65, fontSize: 10 }, ...gridLines),
-      ...objects.filter(o => o.kind === 'line' && o.index !== historyStep?.output).map(o => draw(o, false)),
+      ...objects.filter(o => o.kind === 'line' && !historyOutputs.includes(o.index)).map(o => draw(o, false)),
       ...choices.map(o => draw(o, true)),
-      ...objects.filter(o => o.kind === 'point' && o.index !== historyStep?.output).map(o => draw(o, false)),
-      ...objects.filter(o => o.index === historyStep?.output).map(o => draw(o, false)),
+      ...objects.filter(o => o.kind === 'point' && !historyOutputs.includes(o.index)).map(o => draw(o, false)),
+      ...objects.filter(o => historyOutputs.includes(o.index)).map(o => draw(o, false)),
       tentative && e('circle', { cx: tentative[0], cy: tentative[1], r: 7, fill: '#4ea1ff', pointerEvents: 'none' })),
     e('p', { role: 'status', style: { height: '4em', overflowY: 'auto', margin: '6px 0', fontSize: '0.9em' } },
-      historyStep ? `${selectedGroup ? "Recipe" : `Step ${historyIndex + 1}`}: ${historyStep.description}. Inputs (blue): ${historyStep.inputs.map(objectLabel).join(', ')}. Output (orange): ${objectLabel(historyStep.output)}.` :
+      historyStep ? `${selectedGroup ? "Recipe" : `Step ${historyIndex + 1}`}: ${historyStep.description}. Inputs (blue): ${historyStep.inputs.map(objectLabel).join(', ')}. ${historyOutputs.length === 1 ? 'Output' : 'Outputs'} (orange): ${historyOutputs.map(objectLabel).join(', ')}.` :
       inspection || 'Hover over a point or line to inspect its approximate coordinates or equation.'),
     e('details', { onToggle: ev => { if (!ev.currentTarget.open) setHistoryIndex(null); } },
       e('summary', null, 'Construction history'),
@@ -393,6 +397,8 @@ export default function ConstructionPanel(props) {
         placement && e('p', { role: 'status' }, placement.first ? 'Click the second point of the sample line.' : 'Click on the canvas to place this input.'),
         button(setup ? 'Start construction' : 'Apply samples', () => request('samples', { sampleInputs: sampleRows, recipeName }), !!busy || !sampleRows.length),
         !setup && button('Reset samples', () => request('resetSamples'), !!busy))),
+    props.workspace && !setup && workspace?.specification && workspace.specificationOutput === finalPoint &&
+      e('p', { 'aria-label': 'Workspace specification' }, `Specification proved: ${workspace.specification}`),
     props.workspace && !setup && e('details', { 'aria-label': 'Requirements' },
       e('summary', null, `Requirements (${requirements.length})`),
       e('p', null, 'Author-declared input requirements, checked exactly on the applied samples. These are not a proof of what the recipe achieves.'),
@@ -426,7 +432,10 @@ export default function ConstructionPanel(props) {
     e('label', null, 'Operation ', e('select', { value: operation, disabled: !!busy || !!scene?.view.running, onChange: ev => { invalidate(); setOperation(ev.target.value); setInputs([]); setActive(0); } },
       ...availableOperations.map(o => e('option', { key: o[0], value: o[0] }, o[1])))),
     e('p', { style: { margin: '6px 0' } }, spec[4]),
-    operation.startsWith('recipe:') && e('div', null, e('small', null, 'Author-declared requirements (checked before running):'),
+    operation.startsWith('recipe:') && e('div', null,
+      (props.recipes ?? []).find(r => r.id === operation)?.specification &&
+        e('p', { 'aria-label': 'Proved specification' }, `Specification proved: ${(props.recipes ?? []).find(r => r.id === operation).specification}`),
+      e('small', null, 'Input requirements (checked exactly when running):'),
       e('ul', null, ...((props.recipes ?? []).find(r => r.id === operation)?.requirements ?? []).map((text, i) => e('li', { key: i }, text)))),
     e('p', { style: { margin: '6px 0', fontSize: '0.9em' } },
       `Click a ${spec[3][active]} on the drawing for “${spec[2][active]}”, or use the dropdowns. Drag empty space to pan; scroll to zoom.`),
@@ -450,7 +459,14 @@ export default function ConstructionPanel(props) {
     !setup && !editingSamples && e('fieldset', null, e('legend', null, props.workspace ? 'Recipe output' : 'Submit a coordinate'),
       e('select', { 'aria-label': props.workspace ? 'Recipe output' : 'Final point', disabled: !!busy || !!scene?.view.running, value: objects.some(o => (props.workspace || o.kind === 'point') && o.index === finalPoint) ? finalPoint : '', onChange: ev => { invalidate(); setFinalPoint(Number(ev.target.value)); } },
         e('option', { value: '', disabled: true }, props.workspace ? 'Select an object' : 'Select a point'),
-        ...objects.filter(o => props.workspace || o.kind === 'point').map(o => e('option', { key: o.index, value: o.index }, `${o.kind} ${o.index}`))),
+        ...objects.filter(o => props.workspace || o.kind === 'point').map(o => e('option', { key: o.index, value: o.index }, `${o.kind} ${o.index}${outputNames(o.index) ? ` · ${outputNames(o.index)}` : ''}`))),
+      props.workspace && e('div', null,
+        e('input', { 'aria-label': 'Output name', placeholder: 'For example, midpoint', value: outputName,
+          disabled: !!busy || !!scene?.view.running, onChange: ev => setOutputName(ev.target.value) }),
+        button('Name this output', () => request('nameOutput', { outputName }), !!busy || !!scene?.view.running || !outputName.trim()),
+        e('ul', null, ...(scene?.view.outputs ?? []).map((output, i) => e('li', { key: output.name },
+          `${output.name}: ${objectLabel(output.index)} `,
+          button('Remove name', () => request('removeOutput', { choice: i }), !!busy || !!scene?.view.running))))),
       !props.workspace && e('select', { 'aria-label': 'Coordinate', disabled: !!busy || !!scene?.view.running, value: coordinate, onChange: ev => { invalidate(); setCoordinate(ev.target.value); } },
         e('option', { value: 'x' }, 'x coordinate'), e('option', { value: 'y' }, 'y coordinate')),
       button(props.workspace ? 'Prepare recipe' : 'Submit', () => request('submit'), !!busy || !!scene?.view.running || !scene || !objects.some(o => (props.workspace || o.kind === 'point') && o.index === finalPoint))),

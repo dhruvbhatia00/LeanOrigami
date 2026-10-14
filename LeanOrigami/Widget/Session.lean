@@ -32,6 +32,7 @@ structure Session where
   failure : Option String := none
   requirements : Array Condition := #[]
   checks : Array RecipeRequirement := #[]
+  outputs : Array RecipeOutput := #[]
 
 /-- Human-readable geometric failures, shared by all editing operations. -/
 def errorMessage : ConstructionError → String
@@ -96,7 +97,7 @@ private def Session.advance (session : Session) (steps : List RecipeOperation) :
       let groups := if cursor.group.name.isEmpty || cursor.group.count == 0 then session.groups
         else session.groups.push cursor.group
       { session with
-        running := none, result := some cursor.group.output
+        running := none, result := some cursor.group.output.index
         groups := groups ++ cursor.nested, failure := none }
   | step :: rest =>
     let attempt : Except String Session := do
@@ -104,7 +105,11 @@ private def Session.advance (session : Session) (steps : List RecipeOperation) :
       | .intersect l r => session.intersect l.index r.index
       | .fold request =>
         let preview ← session.preview request
+        let preview := { preview with pending := preview.pending.map fun (request, choices) =>
+          (request, RecipeRequirement.filterCreases checks (session.program.length + 1)
+            session.objects choices) }
         match preview.pending with
+        | some (_, []) => throw "No crease satisfies the next branch/output conditions."
         | some (_, [crease]) => preview.append (.fold request crease)
         | some _ => pure preview
         | none => throw "Recipe discovery did not produce a preview."
@@ -148,9 +153,11 @@ def Session.useRecipe (session : Session) (name : String) (recipe : RecipeTempla
   let base := session.objects.length
   let relocate (i : Nat) := if i < arguments.size then arguments[i]! else base + (i - arguments.size)
   let steps := recipe.steps.map (RecipeOperation.remap relocate)
-  let group : RecipeGroup := ⟨name, session.program.length, steps.length, arguments, relocate recipe.output⟩
+  let relocateOutput (output : RecipeOutput) := { output with index := relocate output.index }
+  let group : RecipeGroup := ⟨name, session.program.length, steps.length, arguments,
+    ⟨relocate recipe.output, recipe.namedOutputs.map relocateOutput⟩⟩
   let nested := recipe.groups.map fun g => { g with
-    start := session.program.length + g.start, inputs := g.inputs.map relocate, output := relocate g.output }
+    start := session.program.length + g.start, inputs := g.inputs.map relocate, output := ⟨relocate g.output.index, g.outputs.map relocateOutput⟩ }
   let inputChecks := recipe.requirements.map fun condition =>
     RecipeRequirement.mk session.program.length session.program.length (condition.remap relocate)
   let nestedChecks := recipe.checks.map fun check => { check with
@@ -158,6 +165,7 @@ def Session.useRecipe (session : Session) (name : String) (recipe : RecipeTempla
     condition := check.condition.remap relocate }
   let session := { session with
     pending := none, failure := none
+    outputs := if name.isEmpty then recipe.outputs else session.outputs
     requirements := if name.isEmpty then recipe.requirements else session.requirements
     checks := session.checks ++ (if name.isEmpty then #[] else inputChecks) ++ nestedChecks
     running := some ⟨steps, group, nested, inputChecks ++ nestedChecks⟩ }
@@ -174,7 +182,8 @@ def Session.undo (session : Session) : Except String Session := do
   return { session with
     program, objects, pending := none, running := none, result := none, failure := none
     groups := session.groups.filter (fun g => g.start + g.count ≤ stop)
-    checks := session.checks.filter (fun check => check.owner < stop) }
+    checks := session.checks.filter (fun check => check.owner < stop)
+    outputs := session.outputs.filter (fun output => output.index < objects.length) }
 
 /-- Record operations, not the exact results on the workspace's sample inputs. -/
 def Session.template (session : Session) (parameters : Array RecipeParameter) (output : Nat) :
@@ -182,9 +191,19 @@ def Session.template (session : Session) (parameters : Array RecipeParameter) (o
   if session.running.isSome then throw "Finish or cancel the recipe before saving."
   unless parameters.size == session.seeds.length do throw "The workspace parameters changed."
   let recipe : RecipeTemplate := ⟨parameters, session.program.map RecipeOperation.ofInstruction,
-    output, session.groups, session.requirements, session.checks⟩
+    output, session.groups, session.requirements, session.checks, session.outputs⟩
   let _ ← recipe.validate
   return recipe
+
+/-- Name an existing output for later callers. Renaming a result changes only
+metadata; the reference still points to a checked construction object. -/
+def Session.nameOutput (session : Session) (name : String) (index : Nat) : Except String Session := do
+  if session.running.isSome then throw "Finish or cancel the recipe before naming outputs."
+  let name := name.trimAscii.toString
+  if name.isEmpty then throw "Give this output a name."
+  unless session.objects[index]?.isSome do throw "This output does not exist."
+  if session.outputs.any (·.name == name) then throw "Use a distinct name for each output."
+  return { session with outputs := session.outputs.push ⟨name, index⟩ }
 
 /-- Read the actual selected scalar; screen coordinates cannot supply it. -/
 def Session.selected (session : Session) (point : Nat) (coordinate : Coordinate) :
@@ -259,6 +278,7 @@ structure View where
   running : Bool := false
   result : Option Nat := none
   failure : Option String := none
+  outputs : Array RecipeOutput := #[]
   deriving Lean.ToJson, Lean.FromJson
 
 /-- Render a snapshot at the requested precision, preserving exact candidate identity. -/
@@ -270,6 +290,6 @@ def Session.view (session : Session) (bits : Nat) : View :=
     history := session.program.toArray.mapIdx fun i step =>
       historyStep (session.seeds.length + i) step
     groups := session.groups, running := session.running.isSome, result := session.result
-    failure := session.failure }
+    failure := session.failure, outputs := session.outputs }
 
 end LeanOrigami.Widget

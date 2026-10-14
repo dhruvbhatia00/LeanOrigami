@@ -104,6 +104,28 @@ private partial def checkExecution (geometry : TSyntax ``Parser.Tactic.tacticSeq
     checkExecution geometry (index+1)
   else throwError "construction program did not reduce to a finite instruction list"
 
+/-- Certify a primitive execution from explicitly supplied objects. This is
+useful for universal recipe specifications, whose operands are parameters
+rather than constructions from the two fixed seeds. The resulting equality
+is about the same checker used by concrete submissions. -/
+syntax (name := executeCheck) "origami_execute" (" using " tacticSeq)? : tactic
+
+@[tactic executeCheck] def elaborateExecuteCheck : Tactic := fun stx => focus do
+  let `(tactic| origami_execute $[using $custom]?) := stx | throwUnsupportedSyntax
+  let geometry ← match custom with
+    | some tactic => pure tactic
+    | none => `(tacticSeq| origami_geometry)
+  withMainContext do
+    let original ← getMainGoal
+    let some (_, lhs, rhs) := (← original.getType).eq?
+      | throwError "expected Program.execute ... = .ok ..."
+    unless lhs.isAppOf ``Program.execute do
+      throwError "expected Program.execute ... = .ok ..."
+    let args := lhs.getAppArgs
+    let args := args.set! (args.size-1) (← normalizeStructure args[0]! args.back!)
+    replaceMainGoal [← original.replaceTargetDefEq (← mkEq (mkAppN lhs.getAppFn args) rhs)]
+  checkExecution geometry 0
+
 /-- Certify the saved program, then its selected coordinate. The same acceptance
 proof can be passed directly to `Program.accepts_sound`. -/
 syntax (name := check) "origami_check" (" using " tacticSeq)? : tactic

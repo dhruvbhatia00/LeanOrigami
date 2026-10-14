@@ -166,3 +166,72 @@ any exact object or proof.
 A ready-to-open example is `LeanOrigamiDemos/Requirements.lean`: place the
 cursor on the first `origami_recipe` command to inspect the axis-midpoint
 requirements, or on the bare command near the end to create a new draft.
+
+## Arithmetic and proved specifications
+
+The operation menu includes **Addition**, **Subtraction**, **Negation**,
+**Multiplication**, **Reciprocal**, and **Division**. A scalar is represented
+by a point `(x, 0)`. Supply the origin, horizontal unit point, both axes,
+vertical unit point, and the operand point(s), in the displayed order. These
+frame objects must already exist. A proof workspace still starts with only
+its original two seed points; a standalone recipe workspace uses its explicit
+sample inputs.
+
+Zero, negative, and equal operands are supported. Only reciprocal/division
+require a nonzero divisor. Multiplication and division select the diagonal
+`x = y` by exact coefficients, not by the position of a crease in a list.
+All operations finish by checking the promised exact output relation.
+
+**Specification proved** refers to the displayed library definition for all
+of its stated inputs. **Input requirements** are checked on the selected
+objects when the call runs. These are different claims. The interface compares
+the complete saved template with the proved library template; changing its
+steps, conditions, outputs, or groups removes that association. Reusing a
+proved recipe's name does not confer its specification on another recipe.
+Ordinary user-authored recipes, including the existing midpoint template,
+remain usable without a general specification badge.
+
+Open `LeanOrigamiDemos/ArithmeticRecipes.lean` and put the cursor on the
+`origami_recipe signedProduct` command. It previews `(-1) × 2 = -2`.
+**Edit samples** lets you change the operands, including setting one to zero.
+The arithmetic operations and their specifications are also in its menu.
+
+## Named outputs and branch conditions
+
+A recipe can return several existing objects. Select an object under
+**Recipe output**, enter an **Output name**, and click **Name this output**.
+Repeat for other objects. The selected default output still determines the
+initial selection after a call. Names appear alongside object references and
+in grouped history; hovering over a group highlights all its named results.
+Removing a name does not delete the object. Undoing a call removes its objects
+and output names together. Old single-output recipes and saved history tuples
+remain readable.
+
+For Lean API users, set `RecipeTemplate.outputs` to named references. Timed
+`checks` can express conditions on a candidate crease or on later objects.
+Candidate conditions filter the exact choices as soon as their references are
+available. Multiple surviving creases still ask for a user choice. A later
+condition can reject a continuation; a normal recipe call then leaves the
+previous choice available for reselection. In a sample replay, failed prefixes
+remain visible for diagnosis and changing/resetting samples.
+
+The contract interface is `RecipeContract`, with separate `sound` and
+`succeeds` fields. `RecipeTemplate.Completion` connects its claims to the
+actual primitive program, checked references, and timed conditions. Authors
+may prove such contracts in Lean; automatic GUI proof generation for arbitrary
+new recipes is still future work. The automatic menu badge currently recognizes
+the proved arithmetic library.
+
+The relevant files are:
+
+- `Construction/ArithmeticRecipe.lean`: the existing binary primitive programs.
+- `Construction/ArithmeticCorrectness.lean`: successful execution and exact
+  result theorems for those programs.
+- `Construction/ArithmeticLibrary.lean`: all six operations, unary reuse, and
+  their common execution theorem.
+- `Widget/Arithmetic.lean`: visual templates, frame requirements, output
+  relations, diagonal policy, and contracts tied to those templates.
+- `Widget/Recipe.lean`: template data, named outputs, contract interface,
+  branch filtering, and saved source.
+- `LeanOrigamiTests/RecipeContracts.lean` and `ArithmeticRecipes.lean`: small
+  kernel and editor integration examples.

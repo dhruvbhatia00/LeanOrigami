@@ -1,4 +1,5 @@
 import LeanOrigami.Widget.Session
+import LeanOrigami.Widget.Arithmetic
 import Lean
 
 /-!
@@ -27,6 +28,7 @@ structure RecipeMenuItem where
   name : String
   parameters : Array RecipeParameter
   requirements : Array String := #[]
+  specification : Option String := none
   deriving ToJson, FromJson
 
 /-- Capture the command's original spelling and elaborated data for reopening
@@ -68,6 +70,8 @@ opaque readGroups (expression : Expr) : MetaM (Array RecipeGroup)
 and reference structure before presenting them as operations. -/
 def recipeLibrary : MetaM (Array NamedRecipe) := do
   let mut library := #[NamedRecipe.mk "recipe:midpoint" "Midpoint (distinct points)" midpointRecipe]
+  for op in [ArithmeticOperation.add, .sub, .neg, .mul, .inv, .div] do
+    library := library.push ⟨s!"recipe:arithmetic:{repr op}", arithmeticName op, arithmeticTemplate op⟩
   let env ← getEnv
   let mut names := (recipeAttribute.ext.getState env).toArray
   for i in [:env.header.moduleNames.size] do
@@ -121,6 +125,8 @@ structure WorkspaceView where
   replaying : Bool
   requirements : Array RequirementView := #[]
   nestedRequirements : Array RequirementView := #[]
+  specification : Option String := none
+  specificationOutput : Nat := 0
   deriving ToJson, FromJson
 
 private def ratSource (q : Rat) : String := s!"({q.num} / {q.den} : LeanOrigami.Scalar)"
