@@ -1,5 +1,6 @@
 import LeanOrigami.Widget.Session
 import LeanOrigami.Widget.Arithmetic
+import LeanOrigami.Widget.Measurements
 import Lean
 
 /-!
@@ -72,6 +73,9 @@ def recipeLibrary : MetaM (Array NamedRecipe) := do
   let mut library := #[NamedRecipe.mk "recipe:midpoint" "Midpoint (distinct points)" midpointRecipe]
   for op in [ArithmeticOperation.add, .sub, .neg, .mul, .inv, .div] do
     library := library.push ⟨s!"recipe:arithmetic:{repr op}", arithmeticName op, arithmeticTemplate op⟩
+  for op in [MeasurementOperation.projectX, .projectY, .transferX, .transferY,
+      .distanceX, .distanceY, .sqrt, .cbrt] do
+    library := library.push ⟨s!"recipe:measurement:{repr op}", op.name, measurementTemplate op⟩
   let env ← getEnv
   let mut names := (recipeAttribute.ext.getState env).toArray
   for i in [:env.header.moduleNames.size] do
@@ -86,6 +90,11 @@ def recipeLibrary : MetaM (Array NamedRecipe) := do
     | .ok _ => pure ()
     library := library.push ⟨s!"recipe:{name}", name.toString, recipe⟩
   return library
+
+/-- Recognize proved built-ins by their complete saved template, including all
+requirements and branch checks. Edited templates lose the association. -/
+def librarySpecification (recipe : RecipeTemplate) : Option String :=
+  (arithmeticSpecification recipe).orElse fun _ => measurementSpecification recipe
 
 /-- Editable rational replacements. `keep` retains the server's exact object,
 including algebraic values that have no rational input representation. -/

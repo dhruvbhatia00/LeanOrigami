@@ -1,4 +1,5 @@
 import LeanOrigamiDemos.ArithmeticRecipes
+import LeanOrigamiDemos.Measurements
 import LeanOrigamiDemos.Requirements
 import LeanOrigamiDemos.Recipes
 import LeanOrigamiDemos.RecipeSetup

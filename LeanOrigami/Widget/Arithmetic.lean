@@ -1,5 +1,5 @@
 import LeanOrigami.Construction.ArithmeticLibrary
-import LeanOrigami.Widget.Recipe
+import LeanOrigami.Widget.Frame
 
 /-!
 # Arithmetic templates for the visual library
@@ -11,15 +11,7 @@ Frame objects are explicit parameters, never silently added as extra seeds.
 -/
 
 namespace LeanOrigami.Widget
-
-private def coordinateIs (index : Nat) (field : Component) (n : Int) : Condition :=
-  .eq (.component index field) (.constant n 1)
-
-private def pointIs (index : Nat) (x y : Int) : Condition :=
-  .and (coordinateIs index .x x) (coordinateIs index .y y)
-
-private def lineIs (index : Nat) (a b c : Int) : Condition :=
-  .and (coordinateIs index .a a) (.and (coordinateIs index .b b) (coordinateIs index .c c))
+open RecipeFrame
 
 /-- Human-readable operation name, separate from its certified mathematical meaning. -/
 def arithmeticName : ArithmeticOperation → String
@@ -57,11 +49,9 @@ representative are erased; every invocation discovers new exact geometry. -/
 def arithmeticTemplate (op : ArithmeticOperation) : RecipeTemplate := Id.run do
   let representative := op.recipe (1 : ℚ) 1 (by cases op <;> decide)
   let steps := representative.steps.map RecipeOperation.ofInstruction
-  let parameters : Array RecipeParameter := #[⟨"Origin (0, 0)", .point⟩, ⟨"Unit X (1, 0)", .point⟩,
-    ⟨"X-axis", .line⟩, ⟨"Y-axis", .line⟩, ⟨"Unit Y (0, 1)", .point⟩,
+  let parameters : Array RecipeParameter := RecipeFrame.parameters ++ #[
     ⟨"First scalar (x, 0)", .point⟩, ⟨"Second scalar (y, 0)", .point⟩]
-  let mut requirements := #[pointIs 0 0 0, pointIs 1 1 0, lineIs 2 0 1 0,
-    lineIs 3 1 0 0, pointIs 4 0 1, Condition.onXAxis 5]
+  let mut requirements := RecipeFrame.requirements.push (.onXAxis 5)
   if op.arity == 7 then requirements := requirements.push (.onXAxis 6)
   match op with
   | .inv => requirements := requirements.push (.not (coordinateIs 5 .x 0))

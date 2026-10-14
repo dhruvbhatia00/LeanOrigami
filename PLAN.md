@@ -1077,7 +1077,7 @@ contracts; general symbolic proof generation remains Phase 10.
 
 ### Phase 7 — Recipe contracts, proved operations, and authoring guidance
 
-**Approved scope, 2026-10-13; checkpoints 1–2 complete.** Build on completed Phase 6,
+**Approved scope, 2026-10-13; checkpoints 1–3 complete.** Build on completed Phase 6,
 including the standalone recipe editor and sample previews. Deliver the small
 usability improvements first, then shared condition/specification support,
 then independently auditable recipe families. Follow AGENTS.md throughout.
@@ -1097,17 +1097,19 @@ still certify the expanded construction through the existing kernel checker.
    interpretation proofs, and editable/persisted/enforced recipe requirements.
 2. **Contracts and arithmetic (7.4–7.5; complete).** Proved specifications,
    branch policies, named outputs, and arithmetic recipes.
-3. **Coordinates and roots (7.6–7.7; pending).** Projections, coordinate and
+3. **Coordinates and roots (7.6–7.7; complete).** Projections, coordinate and
    distance transfer, square roots, and cube roots with their specifications.
-4. **Angles and integration (7.8–7.9; pending).** Angle conditions, trisection,
+4. **Angles and integration (7.8–7.9; in progress).** Angle conditions, trisection,
    complete integration checks, documentation, and the final phase audit.
 
 Complete and audit each checkpoint before proceeding. During checkpoints 1–3,
 keep validation light: use file-level LSP diagnostics, focused examples,
 targeted dependency builds, and selected live widget checks. Defer the broad
 integrated validation to checkpoint 4; do not repeatedly run the full suite.
-Record precisely which checks were performed at each checkpoint. The current
-implementation request covers checkpoint 2; checkpoints 3–4 remain deferred.
+Record precisely which checks were performed at each checkpoint. Checkpoint 2
+is complete; checkpoints 3 and 4 are both authorized (2026-10-14). Complete
+and audit checkpoint 3 before continuing into checkpoint 4. The widget design
+follow-up below is deferred until Phase 7 is complete.
 
 **Checkpoint 1 audit (2026-10-13): complete.** Exact condition semantics and
 embedding proofs, persisted/enforced requirements, default names, and control
@@ -1131,6 +1133,23 @@ test avoid slow reverse field lookup. No full phase suite was run. See
 [the detailed audit](docs/phase-7-contracts.md) and
 [the arithmetic demo](LeanOrigamiDemos/ArithmeticRecipes.lean). Checkpoints 3–4
 remain pending.
+
+**Checkpoint 3 audit (2026-10-14): complete.** All eight coordinate, distance,
+and root operations have execution proofs, exact-scalar existence, branch
+policies, and visual contracts. Focused tests cover signed/off-axis inputs,
+zero and irrational roots, negative cube roots, invalid inputs, nested calls,
+and template persistence. Live sample rejection/recovery and a 53-step visual
+proof of √2 passed, including saving and reopening. A submission timeout exposed
+an expired/default captured-context budget; the corrected gate and saved tactic
+passed LSP and a targeted build. A separate Lean worker checked the exact saved
+demo and widget regressions together, including the expired-context case; key
+axiom checks passed. The common frame API was extracted and the diff audited.
+No broad phase suite was run. See [the detailed audit](docs/phase-7-measurements.md)
+and [the saved visual demo](LeanOrigamiDemos/Measurements.lean).
+
+Checkpoint 4 is now in progress. Continue through its angle semantics, general
+trisection, integration, and final phase audit before returning the completed
+Phase 7 result. The visual design follow-up remains deferred.
 
 #### 7.1 Button explanations and automatic sample names
 
@@ -1319,6 +1338,27 @@ an axis-aligned sample. Check both named outputs and branch behavior in the GUI.
 General algebraic angle bounds, arbitrary trigonometric input expressions, and
 oriented/reflex-angle trisection are deferred extensions, not initial promises.
 
+**Checkpoint 4 implementation order.** After checkpoint 3's audit, first add
+the exact named-angle condition families and their real-angle interpretation.
+Then build the general trisection recipe and its geometry, followed by the
+menu/contract integration and the final phase checks. Keep the trigonometric
+specification separate from executable polynomial tests.
+
+For trisection, normalize the two nonzero input ray vectors to `u` and `v`
+using constructed distances and divisions. Set `c = u · v` and construct the
+positive root `s` of `s² = 1 - c²`. Nonzero, nonstraight rays ensure `s > 0`.
+The vector `w = (v - c*u)/s` supplies the correct side of the first ray for
+either clockwise or counterclockwise input; no approximate orientation choice
+is needed. Construct the unique root `t` in `(1/2, 1)` of
+`4*t³ - 3*t = c`, then the positive root `r` of `r² = 1 - t²`.
+The output directions are `t*u + r*w` and
+`(2*t² - 1)*u + 2*t*r*w`, translated back to the original vertex.
+Every scalar operation and point assembly must expand to existing folds and
+intersections. Prove that the selected cubic root is the cosine of one third
+of the original ray angle, and that these directions lie in order inside that
+angle with three equal gaps. The cubic identity by itself is not acceptance.
+Expose both output points and their lines through the vertex as named outputs.
+
 #### 7.9 Integration, demonstrations, and checkpoint audit
 
 Audit and validate each preceding checkpoint before expanding the next family.
@@ -1342,6 +1382,75 @@ The interface distinguishes exact checks from universal proofs. Existing
 constructibility proofs remain replayable. Record actual validation, code-size
 and specification audits, performance observations, and remaining limitations;
 do not silently defer a listed recipe while marking the phase complete.
+
+### Phase 7U — Widget layout, navigation, and contextual help
+
+**Approved follow-up, 2026-10-14; deferred until Phase 7 is complete.** Finish
+checkpoints 3–4 first. Then make a contained design and documentation pass before
+Phase 8, without renumbering the remaining phases. Do not mix this redesign into
+the ongoing mathematical work or change the construction/proof checker.
+
+- **Canvas and toolbar:** keep the drawing prominent, with compact zoom,
+  Reset view, and Refine display controls beneath it. Explain controls on hover
+  and keyboard focus.
+- **Sample labels:** fix the mismatch between the label entered for a sample
+  point and the label rendered on the canvas. Use the author's chosen label
+  consistently for sample points and lines, including after edits, previewing
+  different samples, saving, and reopening. Rename the sample "Name" fields to
+  "Label" to make their purpose clear. Check this during the design pass, not
+  as part of the ongoing Phase 7 mathematical checkpoints.
+- **Canvas sample-line editing:** use two draggable point handles rather than
+  slope/intercept sliders, so vertical lines work naturally. In an explicit
+  "Add sample line" mode, two canvas clicks place the handles; selecting an
+  existing sample line reveals its handles for movement and rotation. Preview
+  the line while dragging. Snap handles to a visible rational grid and show
+  their exact coordinates, with editable coordinate fields for precise values.
+  Commit exact rational sample data on release; floating-point drawing values
+  are never proof evidence. Reject coincident handles with a clear message and
+  retain the previous valid line. Handles are editing controls, not extra
+  construction inputs. Preserve the line's label and references, mark dependent
+  previews stale, and rediscover branches under the changed samples. Provide
+  keyboard/field alternatives, distinguish editing from ordinary object
+  selection and panning, and test vertical lines, cancellation, saving/reopening,
+  and nested recipe previews. Apply this to sample inputs only; constructed
+  creases remain determined by their construction steps.
+- **Navigation:** organize controls into Construct (operation, ordered inputs,
+  preview/apply), History (steps and nested recipes, retaining input/output
+  highlighting), and Recipe settings (samples, requirements, named outputs).
+  Show Recipe settings only in recipe workspaces. Preserve drafts and exact
+  selections when switching tabs.
+- **Readable layout:** use headings, spacing, subtle card borders, and VS Code
+  theme colors. Support narrow InfoViews and both light and dark themes. Give
+  the next main action a strong button style; make secondary actions quieter.
+  Keep actions beside their relevant controls.
+- **Operation guides:** give each fold and recipe a short purpose description,
+  followed by labeled inputs (meaning and selection order), outputs (objects
+  and intended meaning), and validity requirements. For example, multiplication
+  takes signed x-axis points and an explicit coordinate frame, and produces
+  `(x × y, 0)`. Keep essential selection guidance visible.
+- **Contextual help:** add short hover/focus pop-ups or help icons for unfamiliar
+  terms and controls, with click-to-pin support for longer explanations.
+  Help must be accessible by keyboard, not depend solely on hovering.
+- **Status and errors:** use compact, distinct badges for requirements satisfied,
+  specification proved, and unsaved changes. Keep detailed equations expandable.
+  Place errors near the relevant controls with a useful correction when known.
+  Neither descriptive text nor sample checks should appear to establish a proof.
+- **Custom recipe documentation:** let authors enter a purpose description and
+  descriptions of inputs and named outputs. Persist these as optional,
+  backward-compatible metadata and display them when invoking the recipe.
+  Clearly separate author-written descriptions from proved specifications.
+  Preserve the existing rule that edits cannot leave a misleading proof badge;
+  audit how added descriptive metadata interacts with template recognition.
+- **Progressive detail:** collapse full object lists, generated source, and
+  detailed conditions by default while keeping them easy to find.
+
+**Implementation and acceptance:** primarily refactor the existing frontend;
+add only the small metadata support needed for saved recipe documentation.
+Avoid a parallel editor or duplicated state. Use focused browser checks and a
+short live walkthrough covering navigation, narrow layouts, theme compatibility,
+keyboard/hover help, custom-description save/reopen, and the existing
+construction/save/proof flows. Old saved recipes remain usable without new
+metadata. No mathematical changes or broad new test catalogue are required.
 
 ### Phase 8 — Package the main theory and release
 

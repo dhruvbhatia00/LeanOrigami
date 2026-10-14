@@ -59,14 +59,19 @@ example : True := by
     if accepted then throwError "The submission gate accepted a proof of the wrong type."
     Lean.Elab.Tactic.evalTactic (← `(tactic| trivial))
 
-/-- RPC proof checking must restore auxiliary names under a named theorem's
-asynchronous environment. Anonymous examples do not exercise this restriction. -/
+/-- RPC proof checking restores auxiliary names under a named theorem's
+asynchronous environment and starts a fresh construction budget. A captured
+context may have exhausted its original budget before the user submits. -/
 theorem captured_context : True := by
   run_tac do
     let context : Lean.Elab.ContextInfo := { ← Lean.Elab.CommandContextInfo.save with }
     let locals ← Lean.getLCtx
     let goal ← Lean.Elab.Tactic.getMainTarget
     context.runMetaM locals <| checkProof goal "by decide +kernel"
+    context.runMetaM locals <|
+      withTheReader Lean.Core.Context
+        (fun context => { context with initHeartbeats := 0, maxHeartbeats := 1 })
+        (checkProof goal "by decide +kernel")
     Lean.Elab.Tactic.evalTactic (← `(tactic| trivial))
 
 /-- Opening the panel does not discharge the goal; the ordinary proof is still needed. -/

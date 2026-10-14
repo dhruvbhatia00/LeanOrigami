@@ -87,9 +87,22 @@ private def result {α : Type} (value : Except String α) : RequestM α :=
   | .ok value => pure value
   | .error message => throw (.invalidParams message)
 
+/-- A certificate may expand dozens of primitive steps. Match the exported
+certificate's bounded budget for both RPC checking and saved-tactic replay.
+Term-local `set_option` changes options but not Core's enclosing heartbeat
+limit; adjusting only the generated term therefore leaves the default limit
+in force. Preserve a caller's larger (or unlimited) budget. -/
+private def withConstructionBudget {m : Type → Type} [Monad m]
+    [MonadWithReaderOf Core.Context m] [MonadControlT CoreM m] {α : Type}
+    (action : m α) : m α :=
+  withTheReader Core.Context (fun context => { context with
+    maxHeartbeats := if context.maxHeartbeats == 0 then 0
+      else max context.maxHeartbeats (4000000 * 1000)
+    maxRecDepth := max context.maxRecDepth 8192 }) (withCurrHeartbeats action)
+
 /-- Check a proposed ordinary Lean expression, including its transitive axioms.
 The auxiliary theorem is created only in the captured, disposable environment. -/
-def checkProof (goal : Expr) (source : String) : MetaM Unit := do
+def checkProof (goal : Expr) (source : String) : MetaM Unit := withConstructionBudget do
   -- An editor snapshot can retain an asynchronous theorem environment while
   -- losing its auxiliary-name generator. Kernel checks such as `decide +kernel`
   -- must create their temporary declarations under that theorem's prefix.
@@ -261,7 +274,7 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     { name := state.name, ready := state.ready
       nameLocked := gate.workspace.any (fun w => !w.name.isEmpty)
       inputs := state.inputs, replaying := state.replaying, requirements, nestedRequirements
-      specification := currentRecipe.bind arithmeticSpecification
+      specification := currentRecipe.bind librarySpecification
       specificationOutput := currentRecipe.map (·.output) |>.getD 0 }
   return { session := ← WithRpcRef.mk { snapshot with session, workspace := workspaceState }
            view := session.view request.bits, edit, source, point, coordinate, workspace := workspaceView }
@@ -291,7 +304,7 @@ private def registerPanel (stx : Syntax) (target : String) (goal saved : Option 
     recipes := library.map fun r => ⟨r.id, r.name, r.template.parameters,
       r.template.requirements.map (conditionDescription (fun i =>
         (r.template.parameters[i]?.map (·.name)).getD s!"object {i}")),
-      arithmeticSpecification r.template⟩ }
+      librarySpecification r.template⟩ }
   Lean.Widget.savePanelWidgetInfo ConstructionPanel.javascriptHash (rpcEncode props) stx
 
 /-- Open or prove a saved construction. History annotations are presentation
@@ -301,29 +314,30 @@ syntax (name := origamiPanel) "origami" (ppSpace &"history" ppSpace "(" term ")"
 
 @[tactic origamiPanel]
 def elabOrigami : Tactic
-  | stx@`(tactic| origami $[history ($annotations:term)]? $[saved $source:term]?) => withMainContext do
-    let goal ← instantiateMVars (← getMainTarget)
-    unless goal.isAppOfArity ``ConstructibleNumber 1 do
-      throwError "origami requires a ConstructibleNumber goal."
-    let saved ← source.mapM fun source => do
-      let value ← Term.elabTermEnsuringType source (mkApp (mkConst ``SavedConstruction) goal.appArg!)
-      Term.synthesizeSyntheticMVarsNoPostponing
-      let value ← instantiateMVars value
-      if value.hasMVar || value.hasSorry then
-        throwError "The saved construction has incomplete certificates."
-      return value
-    let groups ← match annotations with
-      | none => pure #[]
-      | some annotations => do
-        let value ← Term.elabTermEnsuringType annotations
-          (mkApp (mkConst ``Array [0]) (mkConst ``RecipeGroup))
+  | stx@`(tactic| origami $[history ($annotations:term)]? $[saved $source:term]?) =>
+    withConstructionBudget <| withMainContext do
+      let goal ← instantiateMVars (← getMainTarget)
+      unless goal.isAppOfArity ``ConstructibleNumber 1 do
+        throwError "origami requires a ConstructibleNumber goal."
+      let saved ← source.mapM fun source => do
+        let value ← Term.elabTermEnsuringType source (mkApp (mkConst ``SavedConstruction) goal.appArg!)
         Term.synthesizeSyntheticMVarsNoPostponing
-        readGroups (← instantiateMVars value)
-    registerPanel stx (← ppExpr goal.appArg!).pretty (some goal) saved none groups
-    if let some saved := saved then
-      let proof ← mkAppM ``SavedConstruction.sound #[saved]
-      (← getMainGoal).assign proof
-      replaceMainGoal []
+        let value ← instantiateMVars value
+        if value.hasMVar || value.hasSorry then
+          throwError "The saved construction has incomplete certificates."
+        return value
+      let groups ← match annotations with
+        | none => pure #[]
+        | some annotations => do
+          let value ← Term.elabTermEnsuringType annotations
+            (mkApp (mkConst ``Array [0]) (mkConst ``RecipeGroup))
+          Term.synthesizeSyntheticMVarsNoPostponing
+          readGroups (← instantiateMVars value)
+      registerPanel stx (← ppExpr goal.appArg!).pretty (some goal) saved none groups
+      if let some saved := saved then
+        let proof ← mkAppM ``SavedConstruction.sound #[saved]
+        (← getMainGoal).assign proof
+        replaceMainGoal []
   | _ => throwUnsupportedSyntax
 
 -- Bare `origami` intentionally leaves the proof state unchanged.

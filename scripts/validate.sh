@@ -37,3 +37,4 @@ lake lean LeanOrigamiTests/Conditions.lean
 lake lean LeanOrigamiTests/RecipeRequirements.lean
 lake lean LeanOrigamiTests/RecipeContracts.lean
 lake lean LeanOrigamiTests/ArithmeticRecipes.lean
+lake lean LeanOrigamiTests/MeasurementRecipes.lean

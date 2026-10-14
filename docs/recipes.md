@@ -82,10 +82,9 @@ A general theorem about a user recipe's meaning is separate work. Recipes can
 also have input restrictions: the built-in midpoint construction needs distinct
 points because its first two folds require them.
 
-Current recipes are finite sequences, with fresh interactive branch choices.
-There are no conditional alternatives or predicate-based automatic branch
-selectors yet. Arithmetic, root, projection, and coordinate-transfer recipes can
-be added through this interface; the initial demonstration is midpoint.
+Current recipes are finite sequences. Exact branch conditions can select a
+unique crease automatically; otherwise the editor asks for a fresh choice.
+Conditional alternative instruction sequences remain future work.
 
 ## Code map and validation
 
@@ -220,7 +219,7 @@ The contract interface is `RecipeContract`, with separate `sound` and
 actual primitive program, checked references, and timed conditions. Authors
 may prove such contracts in Lean; automatic GUI proof generation for arbitrary
 new recipes is still future work. The automatic menu badge currently recognizes
-the proved arithmetic library.
+the proved arithmetic and measurement libraries.
 
 The relevant files are:
 
@@ -235,3 +234,33 @@ The relevant files are:
   branch filtering, and saved source.
 - `LeanOrigamiTests/RecipeContracts.lean` and `ArithmeticRecipes.lean`: small
   kernel and editor integration examples.
+
+## Coordinates, distances, and roots
+
+The measurement operations use the same five explicit frame inputs as
+arithmetic. Projection keeps a point's selected coordinate and sets the other
+to zero. Signed coordinate transfer moves that coordinate to the other axis,
+preserving its sign. For example, `(-2, 3)` projects to `(-2, 0)` on the x-axis,
+whereas transferring its x-coordinate produces `(0, -2)`.
+
+Distance transfer takes two points and returns their nonnegative distance on
+the chosen axis. It accepts coincident points and returns the origin in that
+case. This is different from transferring a signed coordinate.
+
+The square-root recipe takes `(x, 0)` with `x ≥ 0` and returns `(√x, 0)` with
+nonnegative first coordinate. The cube-root recipe accepts any axis scalar,
+including negative values: `(-8, 0)` produces `(-2, 0)`. Root branches are
+identified by exact equations and signs, not their rendered position.
+
+Open `LeanOrigamiDemos/Measurements.lean` and place the cursor on
+`origami_recipe squareRoot`. Its sample radicand is 2. Change it with
+**Edit samples** to explore zero, another positive value, or rejection of a
+negative square-root argument. The same saved instructions are replayed.
+
+The implementation is split into `Construction/CoordinateRecipe.lean`,
+`RootOperation.lean`, and `DistanceRecipe.lean`, with the real-valued meaning
+proved in `MeasurementSemantics.lean`. `Scalar/RootOperations.lean` proves
+existence of the exact algebraic roots. `Widget/Measurements.lean` connects
+these programs to menu templates and their contracts; `Widget/Frame.lean`
+shares frame requirements with arithmetic. Focused examples are in
+`LeanOrigamiTests/MeasurementRecipes.lean`.
