@@ -121,13 +121,9 @@ private def evaluate (field : Scalar.Presentation) (log : ArithmeticLog)
     out := out.push value
   return out
 
-/-- Reconstruct every selected coordinate exactly, using arithmetic rather than
-canonical-number power tables for intermediate expressions. -/
-def prepare (log : ArithmeticLog) (program : Program Scalar) (target : Scalar) :
-    Except String CoordinateTable := do
-  let deps ← dependencies log
-  let groups ← groups log deps program
-  let values := (target :: program.flatMap instructionValues).dedup
+-- Shared arithmetic recovery for both primitive and compositional certificates.
+private def prepareGroups (log : ArithmeticLog) (groups : List (List Nat))
+    (values : List Scalar) : Except String CoordinateTable := do
   let mut fields : Array Scalar.Presentation := #[]
   let mut entries : List (Scalar × SavedScalar) := []
   for ids in groups do
@@ -156,6 +152,26 @@ def prepare (log : ArithmeticLog) (program : Program Scalar) (target : Scalar) :
     fields := fields.push field
   unless entries.length == values.length do throw "certificate fields omit a selected coordinate"
   return ⟨fields, entries⟩
+
+/-- Reconstruct selected primitive coordinates without changing the legacy
+export path. Root fields remain grouped by actual arithmetic dependencies. -/
+def prepare (log : ArithmeticLog) (program : Program Scalar) (target : Scalar) :
+    Except String CoordinateTable := do
+  let deps ← dependencies log
+  let related ← groups log deps program
+  prepareGroups log related (target :: program.flatMap instructionValues).dedup
+
+/-- Prepare fields for the equations of retained calls and primitives. Each block
+contains the coordinates that one certificate must relate. A proved recipe needs
+its inputs and public outputs, not the coordinates of its private construction. -/
+def prepareBlocks (log : ArithmeticLog) (blocks : List (List Scalar)) (target : Scalar) :
+    Except String CoordinateTable := do
+  let deps ← dependencies log
+  let mut related := []
+  for block in blocks do
+    related := merge related (← rootsFor log deps block)
+  if related.isEmpty then related := [[]]
+  prepareGroups log related (target :: blocks.flatten).dedup
 
 end CoordinateTable
 end LeanOrigami.Text

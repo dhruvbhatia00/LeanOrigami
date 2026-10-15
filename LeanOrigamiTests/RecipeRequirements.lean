@@ -30,36 +30,38 @@ def run : IO Unit := do
     ⟨"B", .point, #["2", "0"], false⟩]
   let (state, session) ← get (empty.applySamples seedless "quarter" inputs 0)
   let first ← get (session.useRecipe "Midpoint" midpointRecipe #[0, 1])
-  let second ← get (first.useRecipe "Axis midpoint" axisMidpoint #[4, 1])
-  let recipe ← get (second.template midpointRecipe.parameters 7)
-  require "nested guards retain shifted references and boundaries"
-    (recipe.checks.size == 3 && recipe.checks[2]?.any (fun check => check.before == 3 && check.owner == 3))
-  require "nested geometric result" ((← get (second.selected 7 .x)) == (3 / 2 : Scalar))
+  let second ← get (first.useRecipe "Axis midpoint" axisMidpoint #[2, 1])
+  let recipe ← get (second.template midpointRecipe.parameters 3)
+  require "nested guards retain their local scope"
+    (recipe.steps.length == 2 && match recipe.steps[1]? with
+      | some (RecipeOperation.call _ nested args) => args == #[2, 1] && nested.requirements.size == 2
+      | _ => false)
+  require "nested geometric result" ((← get (second.selected 3 .x)) == (3 / 2 : Scalar))
   let undone ← get second.undo
   require "undo removes just the latest call and its requirements"
-    (undone.program.length == 3 && undone.checks.size == 1)
+    (undone.program.length == 1 && undone.checks.isEmpty)
   let (_, failed) ← get (state.applySamples second "quarter"
-    #[⟨"A", .point, #["0", "2"], false⟩, ⟨"B", .point, #["2", "0"], false⟩] 7)
+    #[⟨"A", .point, #["0", "2"], false⟩, ⟨"B", .point, #["2", "0"], false⟩] 3)
   require "nested requirement is enforced after the first call on new samples"
-    (failed.program.length == 3 && failed.failure.isSome && failed.running.isSome)
+    (failed.active.program.isEmpty && failed.failure.isSome && failed.running.isSome)
 
-  let (requiredState, required) ← get (state.editRequirement first 4
+  let (requiredState, required) ← get (state.editRequirement first 2
     (some ⟨"onXAxis", #[0], #[]⟩) 0)
   require "author condition retained" (required.requirements.size == 1)
   let (badState, bad) ← get (requiredState.applySamples required "quarter"
-    #[⟨"A", .point, #["0", "1"], false⟩, ⟨"B", .point, #["2", "0"], false⟩] 4)
+    #[⟨"A", .point, #["0", "1"], false⟩, ⟨"B", .point, #["2", "0"], false⟩] 2)
   require "input failure retains the recipe but executes no steps"
     (badState.replaying && bad.program.isEmpty && bad.failure.isSome)
-  let (_, recovered) ← get (badState.editRequirement bad 4 none 0)
+  let (_, recovered) ← get (badState.editRequirement bad 2 none 0)
   require "removing the requirement replays retained steps"
-    (recovered.program.length == 3 && recovered.failure.isNone)
-  let (stateOr, sessionOr) ← get (requiredState.editRequirement required 4
+    (recovered.program.length == 1 && recovered.failure.isNone)
+  let (stateOr, sessionOr) ← get (requiredState.editRequirement required 2
     (some ⟨"onYAxis", #[0], #[]⟩) 0)
-  let (_, combined) ← get (stateOr.editRequirement sessionOr 4
+  let (_, combined) ← get (stateOr.editRequirement sessionOr 2
     (some ⟨"or", #[0, 1], #[]⟩) 0)
   require "OR replaces both operands" (combined.requirements.size == 1)
   require "wrong-kind requirement is rejected by the shared API"
-    ((state.editRequirement first 4 (some ⟨"parallel", #[0, 1], #[]⟩) 0).toOption.isNone)
+    ((state.editRequirement first 2 (some ⟨"parallel", #[0, 1], #[]⟩) 0).toOption.isNone)
 
   let polynomial ← get (RequirementInput.condition ⟨"polynomialEq", #[0], #["x", "-2, 0, 1"]⟩ #[])
   let .finite (root :: _) := Scalar.realRoots (Scalar.polynomial [-2, 0, 1])

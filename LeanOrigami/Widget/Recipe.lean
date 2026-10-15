@@ -7,8 +7,8 @@ import Lean.Data.Json.FromToJson
 # Parameterized visual recipes
 
 Templates contain references and operations, never recorded coordinates or
-branch numbers. Their expansion is discovered anew on concrete inputs. Groups
-are presentation metadata for nested calls; certification uses only primitives.
+branch numbers. Calls retain local bodies and declared public outputs; groups
+remain presentation metadata. Concrete results are discovered on new inputs.
 -/
 
 namespace LeanOrigami.Widget
@@ -23,12 +23,6 @@ structure RecipeParameter where
   name : String
   kind : ObjectKind
   deriving Repr, Lean.ToJson, Lean.FromJson
-
-/-- A fold requiring fresh discovery, or a unique intersection. -/
-inductive RecipeOperation where
-  | fold (request : FoldRequest)
-  | intersect (left right : LineRef)
-  deriving Repr
 
 /-- A named result refers to an existing object; it never introduces geometry.
 The kind is determined from the referenced object during validation. -/
@@ -77,8 +71,17 @@ instance : Lean.FromJson RecipeGroup where
       ← json.getObjValAs? Nat "count", ← json.getObjValAs? (Array Nat) "inputs",
       ⟨← json.getObjValAs? Nat "output", outputs⟩⟩
 
+mutual
+
+/-- A fold requiring fresh discovery, or a unique intersection. -/
+inductive RecipeOperation where
+  | fold (request : FoldRequest)
+  | intersect (left right : LineRef)
+  | call (name : String) (recipe : RecipeTemplate) (arguments : Array Nat)
+  deriving Repr
+
 /-- A reusable construction with local parameter indices followed by outputs.
-Nested calls are flattened when recorded, retaining their inspectable groups.
+Nested calls retain their own local object scope and expose declared outputs.
 No claim about the geometric meaning of the output is implicit in this data. -/
 structure RecipeTemplate where
   parameters : Array RecipeParameter
@@ -90,10 +93,20 @@ structure RecipeTemplate where
   outputs : Array RecipeOutput := #[]
   deriving Repr
 
+end
+
 /-- Single-output source remains valid. Named outputs supplement the default
 output used by existing callers and by automatic point selection. -/
 def RecipeTemplate.namedOutputs (recipe : RecipeTemplate) : Array RecipeOutput :=
   if recipe.outputs.isEmpty then #[⟨"Result", recipe.output⟩] else recipe.outputs
+
+/-- The default selection is public even when additional outputs are named.
+Repeated names for the same object do not allocate duplicate public references. -/
+def RecipeTemplate.publicOutputs (recipe : RecipeTemplate) : Array Nat := Id.run do
+  let mut outputs := #[recipe.output]
+  for output in recipe.namedOutputs do
+    unless outputs.contains output.index do outputs := outputs.push output.index
+  return outputs
 
 /-- Read a geometric object's kind without inspecting its coordinates. -/
 def objectKind {K : Type*} [Field K] : Object K → ObjectKind
@@ -153,10 +166,12 @@ def RecipeOperation.inputs : RecipeOperation → List (Nat × ObjectKind)
       [(p.index, .point), (q.index, .point), (l.index, .line), (m.index, .line)]
   | .fold (.axiom7 p l m) => [(p.index, .point), (l.index, .line), (m.index, .line)]
   | .intersect l m => [(l.index, .line), (m.index, .line)]
+  | .call _ recipe arguments =>
+    (arguments.toList.zip recipe.parameters.toList).map fun (index, parameter) => (index, parameter.kind)
 
 /-- Validate reference order and kinds, including the selected result. Geometry
 is deliberately checked later, on each invocation's actual arguments. -/
-def RecipeTemplate.validate (recipe : RecipeTemplate) : Except String ObjectKind := do
+partial def RecipeTemplate.objectKinds (recipe : RecipeTemplate) : Except String (Array ObjectKind) := do
   if recipe.parameters.isEmpty then throw "A recipe needs at least one parameter."
   let mut kinds := recipe.parameters.map (·.kind)
   let mut names : Array String := #[]
@@ -169,16 +184,27 @@ def RecipeTemplate.validate (recipe : RecipeTemplate) : Except String ObjectKind
   for condition in recipe.requirements do
     unless valid kinds condition do
       throw "A requirement has a missing/wrong-kind input or a zero denominator."
+  let mut boundaries := #[kinds.size]
   for step in recipe.steps do
+    if let .call _ nested arguments := step then
+      unless arguments.size == nested.parameters.size do throw "Select every nested recipe input."
     for (index, expected) in step.inputs do
       let some actual := kinds[index]? | throw s!"Recipe reference {index} is missing or forward."
       unless actual == expected do throw s!"Recipe reference {index} has the wrong kind."
-    kinds := kinds.push (match step with | .fold _ => .line | .intersect _ _ => .point)
+    match step with
+    | .fold _ => kinds := kinds.push .line
+    | .intersect _ _ => kinds := kinds.push .point
+    | .call _ nested _ =>
+      let inner ← nested.objectKinds
+      for index in nested.publicOutputs do
+        let some kind := inner[index]? | throw "A nested output does not exist."
+        kinds := kinds.push kind
+    boundaries := boundaries.push kinds.size
   for check in recipe.checks do
     unless check.owner ≤ check.before && check.before ≤ recipe.steps.length &&
-        valid (kinds.extract 0 (recipe.parameters.size + check.before)) check.condition do
+        valid (kinds.extract 0 (boundaries[check.before]?.getD 0)) check.condition do
       throw "A nested requirement has invalid references or a misplaced check."
-  let some output := kinds[recipe.output]? | throw "The recipe output does not exist."
+  unless kinds[recipe.output]?.isSome do throw "The recipe output does not exist."
   let mut outputNames : Array String := #[]
   for result in recipe.namedOutputs do
     if result.name.trimAscii.toString.isEmpty || outputNames.contains result.name then
@@ -187,12 +213,18 @@ def RecipeTemplate.validate (recipe : RecipeTemplate) : Except String ObjectKind
     outputNames := outputNames.push result.name
   for group in recipe.groups do
     unless group.count > 0 && group.start + group.count ≤ recipe.steps.length &&
-        group.inputs.all (· < recipe.parameters.size + group.start) &&
-        group.output.index < recipe.parameters.size + group.start + group.count do
+        group.inputs.all (· < (boundaries[group.start]?.getD 0)) &&
+        group.output.index < (boundaries[group.start + group.count]?.getD 0) do
       throw "Invalid recipe history group."
     for result in group.outputs do
-      unless result.index < recipe.parameters.size + group.start + group.count do
+      unless result.index < (boundaries[group.start + group.count]?.getD 0) do
         throw "A named history output does not exist at the end of its call."
+  return kinds
+
+/-- Validate the complete scoped recipe and return its default output kind. -/
+def RecipeTemplate.validate (recipe : RecipeTemplate) : Except String ObjectKind := do
+  let kinds ← recipe.objectKinds
+  let some output := kinds[recipe.output]? | throw "The recipe output does not exist."
   return output
 
 /-- Filter exact creases by the conditions whose objects become available at
@@ -244,6 +276,7 @@ theorem RecipeRequirement.filterCreases_singleton {K : Type} [Field K] [LinearOr
 def RecipeOperation.remap (f : Nat → Nat) : RecipeOperation → RecipeOperation
   | .fold request => .fold (request.remap f)
   | .intersect l r => .intersect ⟨f l.index⟩ ⟨f r.index⟩
+  | .call name recipe arguments => .call name recipe (arguments.map f)
 
 private def arraySource (xs : Array String) := "#[" ++ String.intercalate ", " xs.toList ++ "]"
 
@@ -259,10 +292,13 @@ def RecipeGroup.source (group : RecipeGroup) : String :=
       "{ index := " ++ toString group.output.index ++ ", names := " ++ arraySource (group.outputs.map RecipeOutput.source) ++ " }") ++ "⟩"
 
 /-- Serialize the small declarative format, without native values or opaque IDs. -/
-def RecipeTemplate.source (recipe : RecipeTemplate) : String := Id.run do
+partial def RecipeTemplate.source (recipe : RecipeTemplate) : String := Id.run do
   let parameters := arraySource (recipe.parameters.map fun p =>
     s!"⟨{Lean.Json.compress (Lean.toJson p.name)}, .{if p.kind == .point then "point" else "line"}⟩")
   let steps := recipe.steps.map fun step => match step with
+    | .call name nested arguments =>
+      ".call " ++ Lean.Json.compress (Lean.toJson name) ++ " (" ++ nested.source ++ ") " ++
+        arraySource (arguments.map toString)
     | .intersect l r => s!".intersect ⟨{l.index}⟩ ⟨{r.index}⟩"
     | .fold request =>
       let n := match request with

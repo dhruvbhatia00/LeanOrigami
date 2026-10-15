@@ -132,6 +132,15 @@ and polynomial comparisons. Parallel includes coincident lines; collinear
 includes repeated points. Add a distinctness requirement when needed. Lines
 always have a nonzero normal and canonical coefficients.
 
+For 30°, 45°, or 60°, choose **Smaller angle between lines** or **Angle between
+rays from a vertex**. The line family ignores orientation: a 135° crossing
+has a smaller line angle of 45°. The ray family instead takes three points:
+vertex first, then one point on each ray. It distinguishes 45° from 135° and
+rejects a ray whose endpoint equals the vertex. Vertical lines need no special
+handling. These are exact polynomial checks, not comparisons of rounded angles.
+`Construction/AngleCondition.lean` defines the families;
+`Geometry/AngleSemantics.lean` proves their meaning as Mathlib real angles.
+
 Coordinate comparisons accept integers and fractions. To require a positive
 coordinate, choose **Coordinate > value** and enter `0`. Polynomial comparisons
 use one selected coordinate `t` and a comma-separated list of rational
@@ -264,3 +273,28 @@ existence of the exact algebraic roots. `Widget/Measurements.lean` connects
 these programs to menu templates and their contracts; `Widget/Frame.lean`
 shares frame requirements with arithmetic. Focused examples are in
 `LeanOrigamiTests/MeasurementRecipes.lean`.
+
+## Retained calls and public outputs
+
+A recipe invocation now occupies one entry in the caller's history. Only its
+default output and additional named outputs receive caller references. The
+recipe's auxiliary points and creases stay in its private scope. Use **Inspect**
+in the history to view that scope, including nested calls; **Return to
+construction** restores the caller. Inspection is read only.
+
+Unchanged midpoint calls compute just the midpoint and use a reusable theorem
+when saved. Edited definitions use the ordinary primitive checker, including any
+retained calls inside their bodies. The exact definition selects the theorem;
+renaming a call does not establish a theorem about a different recipe. General
+user-declared output specifications still need their separate proofs.
+
+New proof saves use `origami composed (...)`. Existing `origami saved (...)`
+proofs remain supported with their original primitive reference numbering.
+Saving an edited old construction converts it to the current format. Recipe
+workspaces continue to use `origami_recipe ... saved (...)`, retaining nested
+definitions so new samples rediscover their outputs.
+
+For a compact saved example, open `LeanOrigamiDemos/ComposedRecipes.lean` and
+place the cursor on `origami` at line 17. Expand Construction history and a
+midpoint entry to find Inspect. See [the composition audit](phase-7-composition.md)
+for the certificate interface, validation, and current limitations.

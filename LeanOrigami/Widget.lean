@@ -1,4 +1,4 @@
-import LeanOrigami.Widget.Saved
+import LeanOrigami.Widget.Export
 import LeanOrigami.Widget.Goal
 import LeanOrigami.Widget.Workspace
 import ProofWidgets.Component.Panel.Basic
@@ -80,6 +80,7 @@ structure Response where
   point : Nat := 1
   coordinate : String := "x"
   workspace : Option WorkspaceView := none
+  inspectionPath : Array Nat := #[]
   deriving RpcEncodable
 
 private def result {α : Type} (value : Except String α) : RequestM α :=
@@ -87,7 +88,7 @@ private def result {α : Type} (value : Except String α) : RequestM α :=
   | .ok value => pure value
   | .error message => throw (.invalidParams message)
 
-/-- A certificate may expand dozens of primitive steps. Match the exported
+/-- A certificate may expand hundreds of primitive steps. Match the exported
 certificate's bounded budget for both RPC checking and saved-tactic replay.
 Term-local `set_option` changes options but not Core's enclosing heartbeat
 limit; adjusting only the generated term therefore leaves the default limit
@@ -97,7 +98,7 @@ private def withConstructionBudget {m : Type → Type} [Monad m]
     (action : m α) : m α :=
   withTheReader Core.Context (fun context => { context with
     maxHeartbeats := if context.maxHeartbeats == 0 then 0
-      else max context.maxHeartbeats (4000000 * 1000)
+      else max context.maxHeartbeats (Text.certificateHeartbeats * 1000)
     maxRecDepth := max context.maxRecDepth 8192 }) (withCurrHeartbeats action)
 
 /-- Check a proposed ordinary Lean expression, including its transitive axioms.
@@ -143,11 +144,10 @@ private def submission (gate : PanelContext) (session : Session) (point : Nat)
     | .cubeRoot q => decide (target ^ 3 = (q : Scalar))
   unless matchesTarget do throw (.invalidParams
     "The selected coordinate does not equal the goal. Check the point, x/y coordinate, and root branch.")
-  let certificate ← result (← Text.prepareExact session.program ⟨point⟩ coordinate target)
-  let saved := savedSource certificate point coordinate
+  let saved ← result (← prepareComposition session point coordinate)
   try
     gate.context.runMetaM gate.locals
-      (checkProof goal s!"LeanOrigami.Widget.SavedConstruction.sound ({saved})")
+      (checkProof goal s!"LeanOrigami.Widget.SavedComposition.sound ({saved})")
   catch error => throw (.invalidParams s!"This coordinate could not close the goal. {error.message}")
   return saved
 
@@ -172,10 +172,12 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
         point := session.result.getD 0
       else if let some saved := gate.saved then
         let restored ← try
-            gate.context.runMetaM gate.locals (reopen saved)
+            gate.context.runMetaM gate.locals do
+              let type ← whnf (← inferType saved)
+              if type.isAppOf ``SavedComposition then reopenComposition saved else reopen saved
           catch error => throw (.invalidParams s!"Could not reopen this construction: {error.message}")
         let (loaded, selected, axis) ← result restored
-        session := { loaded with groups := gate.groups }
+        session := if gate.groups.isEmpty then loaded else { loaded with groups := gate.groups }
         point := selected
         coordinate := match axis with | .x => "x" | .y => "y"
       pure { gate := gate.id, document, session, workspace := workspaceState }
@@ -187,6 +189,8 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
       pure saved
   let mut session := snapshot.session
   let mut workspaceState : Option WorkspaceState := snapshot.workspace
+  let mut inspection : Option Session := none
+  let mut inspectionPath : Array Nat := #[]
   let mut source := ""
   let mut edit := none
   if workspaceState.any (fun state => !state.ready) &&
@@ -196,6 +200,11 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
     throw (.invalidParams "Finish or cancel the current recipe first.")
   match request.action with
   | "start" | "render" => pure ()
+  | "inspect" =>
+    inspectionPath := request.inputs.push request.choice
+    let mut inner := session
+    for index in inspectionPath do inner ← result (inner.inspect index)
+    inspection := some inner
   | "preview" =>
     let some number := request.operation.toNat? | throw (.invalidParams "Unknown fold operation.")
     let fold ← result (foldRequest number request.inputs.toList)
@@ -261,7 +270,7 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
         source ← submission gate session request.point axis
         let history := if session.groups.isEmpty then "" else
           "history (#[" ++ String.intercalate ", " (session.groups.toList.map RecipeGroup.source) ++ "]) "
-        pure ("origami " ++ history ++ "saved (" ++ source ++ ")")
+        pure ("origami " ++ history ++ "composed (" ++ source ++ ")")
     let indent := String.ofList (List.replicate gate.range.start.character ' ')
     let replacement := replacement.replace "\n" ("\n" ++ indent)
     edit := some (MakeEditLinkProps.ofReplaceRange document gate.range replacement).edit
@@ -277,7 +286,10 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
       specification := currentRecipe.bind librarySpecification
       specificationOutput := currentRecipe.map (·.output) |>.getD 0 }
   return { session := ← WithRpcRef.mk { snapshot with session, workspace := workspaceState }
-           view := session.view request.bits, edit, source, point, coordinate, workspace := workspaceView }
+           view := match inspection with
+             | none => session.view request.bits
+             | some inner => { inner.view request.bits with inspecting := true }
+           edit, source, point, coordinate, inspectionPath, workspace := workspaceView }
 
 /-- Interactive SVG panel; JavaScript is source-controlled and needs no bundler. -/
 @[widget_module]
@@ -308,19 +320,21 @@ private def registerPanel (stx : Syntax) (target : String) (goal saved : Option 
   Lean.Widget.savePanelWidgetInfo ConstructionPanel.javascriptHash (rpcEncode props) stx
 
 /-- Open or prove a saved construction. History annotations are presentation
-metadata; the certificate still checks only the expanded exact program. -/
+metadata. New saves retain certified calls; old primitive saves remain readable. -/
 syntax (name := origamiPanel) "origami" (ppSpace &"history" ppSpace "(" term ")")?
-  (ppSpace &"saved" ppSpace term)? : tactic
+  (ppSpace &"saved" ppSpace term)? (ppSpace &"composed" ppSpace term)? : tactic
 
 @[tactic origamiPanel]
 def elabOrigami : Tactic
-  | stx@`(tactic| origami $[history ($annotations:term)]? $[saved $source:term]?) =>
+  | stx@`(tactic| origami $[history ($annotations:term)]? $[saved $source:term]? $[composed $composition:term]?) =>
     withConstructionBudget <| withMainContext do
       let goal ← instantiateMVars (← getMainTarget)
       unless goal.isAppOfArity ``ConstructibleNumber 1 do
         throwError "origami requires a ConstructibleNumber goal."
-      let saved ← source.mapM fun source => do
-        let value ← Term.elabTermEnsuringType source (mkApp (mkConst ``SavedConstruction) goal.appArg!)
+      if source.isSome && composition.isSome then throwError "Choose one saved construction."
+      let saved ← (composition.or source).mapM fun source => do
+        let kind := if composition.isSome then ``SavedComposition else ``SavedConstruction
+        let value ← Term.elabTermEnsuringType source (mkApp (mkConst kind) goal.appArg!)
         Term.synthesizeSyntheticMVarsNoPostponing
         let value ← instantiateMVars value
         if value.hasMVar || value.hasSorry then
@@ -335,7 +349,8 @@ def elabOrigami : Tactic
           readGroups (← instantiateMVars value)
       registerPanel stx (← ppExpr goal.appArg!).pretty (some goal) saved none groups
       if let some saved := saved then
-        let proof ← mkAppM ``SavedConstruction.sound #[saved]
+        let sound := if composition.isSome then ``SavedComposition.sound else ``SavedConstruction.sound
+        let proof ← mkAppM sound #[saved]
         (← getMainGoal).assign proof
         replaceMainGoal []
   | _ => throwUnsupportedSyntax

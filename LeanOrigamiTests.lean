@@ -1,7 +1,11 @@
+import LeanOrigamiTests.Composition
+import LeanOrigamiTests.ScopedRecipes
 import LeanOrigamiTests.Widget
 import LeanOrigamiTests.WidgetHistory
 import LeanOrigamiTests.Feasibility
 import LeanOrigamiTests.Geometry
+import LeanOrigamiTests.Angles
+import LeanOrigamiTests.Trisection
 import LeanOrigamiTests.Construction
 import LeanOrigamiTests.Roots
 import LeanOrigamiTests.PointLine

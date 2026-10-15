@@ -22,6 +22,8 @@ const requirementFamilies = [
   ['onLine', 'Point on line', ['point', 'line']], ['onXAxis', 'Point on x-axis', ['point']], ['onYAxis', 'Point on y-axis', ['point']],
   ['collinear', 'Collinear points (repeated points allowed)', ['point', 'point', 'point']],
   ['parallel', 'Parallel lines (coincident allowed)', ['line', 'line']], ['perpendicular', 'Perpendicular lines', ['line', 'line']],
+  ['lineAngle', 'Smaller angle between lines', ['line', 'line']],
+  ['rayAngle', 'Angle between rays from a vertex', ['point', 'point', 'point']],
   ['coordinateEq', 'Coordinate = value', ['point']], ['coordinateLe', 'Coordinate ≤ value', ['point']],
   ['coordinateLt', 'Coordinate < value', ['point']], ['coordinateGe', 'Coordinate ≥ value', ['point']], ['coordinateGt', 'Coordinate > value', ['point']],
   ['polynomialEq', 'Polynomial = 0', ['point']], ['polynomialLe', 'Polynomial ≤ 0', ['point']], ['polynomialLt', 'Polynomial < 0', ['point']],
@@ -152,6 +154,7 @@ export default function ConstructionPanel(props) {
   const bits = precisionFor(viewport.width, extraBits);
   function install(result) { sceneRef.current = result; setScene(result); setHistoryIndex(null); }
   async function request(action, overrides = {}) {
+    if (sceneRef.current?.view.inspecting && !['render', 'inspect'].includes(action)) return;
     const wasSetup = sceneRef.current?.workspace?.ready === false;
     const token = newGeneration(generation);
     setBusy(action === 'submit' ? (props.workspace ? 'Preparing recipe…' : 'Checking the complete proof…') : 'Computing…');
@@ -159,7 +162,7 @@ export default function ConstructionPanel(props) {
     try {
       const response = await rpc.call('LeanOrigami.Widget.interact', {
         gate: props.gate, session: sceneRef.current?.session ?? null,
-        action, operation, inputs: ['preview', 'intersect', 'recipe'].includes(action) ? inputs : [],
+        action, operation, inputs: action === 'inspect' ? (sceneRef.current?.inspectionPath ?? []) : ['preview', 'intersect', 'recipe'].includes(action) ? inputs : [],
         choice: 0, point: finalPoint, coordinate, bits, recipeName: '', sampleInputs: [], outputName: '', requirement: { family: 'distinctPoints', references: [], values: [] }, ...overrides,
       });
       if (!isCurrent(generation, token)) return;
@@ -207,14 +210,18 @@ export default function ConstructionPanel(props) {
   }, []);
   // Refresh display only; the RPC preserves exact choices and program contents.
   React.useEffect(() => {
-    if (sceneRef.current && !busy) request('render');
+    if (sceneRef.current && !busy) {
+      const path = sceneRef.current.inspectionPath ?? [];
+      if (path.length) request('inspect', { inputs: path.slice(0, -1), choice: path.at(-1) });
+      else request('render');
+    }
   }, [bits]);
   function invalidate() {
     newGeneration(generation); setBusy(''); setSubmission(null); setMessage(''); setPreviewValid(false); setHistoryIndex(null);
     if (sceneRef.current) install({ ...sceneRef.current, view: { ...sceneRef.current.view, choices: [] } });
   }
   function select(index, kind) {
-    if (busy || editingSamples || scene?.view.running) return;
+    if (busy || editingSamples || scene?.view.running || scene?.view.inspecting) return;
     if (spec[3][active] !== kind) { setMessage(`Choose a ${spec[3][active]} for ${spec[2][active]}.`); return; }
     invalidate(); setInputs(old => { const next = [...old]; next[active] = index; return next; });
     setActive(Math.min(active + 1, spec[2].length - 1));
@@ -296,6 +303,7 @@ export default function ConstructionPanel(props) {
     }),
   ];
   const requirementSpec = requirementFamilies.find(f => f[0] === requirementFamily);
+  const requirementAngle = ['lineAngle', 'rayAngle'].includes(requirementFamily);
   const combining = ['and', 'or', 'not'].includes(requirementFamily);
   const requirementFields = requirementFamily.startsWith('coordinate') || requirementFamily.startsWith('polynomial');
   const requirements = scene?.workspace?.requirements ?? [];
@@ -323,13 +331,15 @@ export default function ConstructionPanel(props) {
       const group = groups.filter(g => !excluded.includes(g) && g.start === i && g.count > 0 && i + g.count <= end)
         .sort((a, b) => b.count - a.count)[0];
       if (group) {
-        const groupKey = `recipe:${groups.indexOf(group)}`;
+        const groupKey = `recipe:${groups.indexOf(group)}`, stepIndex = i;
         rows.push(e('li', { key: `group-${i}` }, e('details', null,
           e('summary', {
             onMouseMove: () => setHistoryIndex(groupKey), onFocus: () => setHistoryIndex(groupKey),
             onMouseLeave: () => setHistoryIndex(current => current === groupKey ? null : current),
             onBlur: () => setHistoryIndex(current => current === groupKey ? null : current),
           }, `${group.name} (${group.inputs.map(objectLabel).join(', ')}) → ${group.outputs?.length ? group.outputs.map(o => `${o.name}: ${objectLabel(o.index)}`).join(', ') : objectLabel(group.output)}`),
+          group.count === 1 && history[i]?.description.startsWith('Recipe:') &&
+            button(`Inspect ${group.name}`, () => request('inspect', { choice: stepIndex }), !!busy),
           e('ol', null, ...historyRows(i, i + group.count, [...excluded, group])))));
         i += group.count;
       } else { rows.push(historyRow(history[i], i)); i++; }
@@ -338,7 +348,9 @@ export default function ConstructionPanel(props) {
   }
   const unresolvedDisplay = [...objects, ...choices].some(o => needsRefinement(o, viewport));
   return e('details', { open: true, style: { maxWidth: '760px' } },
-    e('summary', null, 'Origami construction'),
+    e('summary', null, scene?.view.inspecting ? 'Inside recipe (read only)' : 'Origami construction'),
+    scene?.view.inspecting && e('p', null, 'These objects are private to this call. Your construction is unchanged. ',
+      button('Return to construction', () => request('render'), !!busy)),
     e('p', null, props.workspace ? `Recipe workspace: ${workspace?.name || props.target}` : `Goal: ${props.target}`),
     props.workspace && e('p', null, 'Sample inputs are parameters. Saving a recipe does not prove a theorem.'),
     props.workspace && e('p', null, (workspace?.inputs ?? props.parameters ?? []).map((p, i) => `${p.name}: ${p.kind === 'point' ? 'P' : 'L'}${i}`).join(' · ')),
@@ -368,10 +380,10 @@ export default function ConstructionPanel(props) {
       button('Zoom out', () => setViewport(v => ({ ...v, width: Math.min(1e12, v.width * 2) }))),
       helpButton('Reset view', () => setViewport(initialViewport), 'Restore the initial camera position and zoom.'),
       helpButton('Refine display', () => setExtraBits(b => Math.min(480, b + 32)), 'Request more accurate drawing approximations. The exact construction and proof stay the same.', !!busy),
-      button('Undo', () => request('undo'), !scene || scene.view.steps === 0 || !!scene.view.running || !!editingSamples)),
+      button('Undo', () => request('undo'), !!scene?.view.inspecting || !scene || scene.view.steps === 0 || !!scene.view.running || !!editingSamples)),
     controlHelp && e('p', { role: 'tooltip' }, controlHelp),
     unresolvedDisplay && e('p', { role: 'status' }, 'Some objects need more display precision. Refine or use the exact object list.'),
-    props.workspace && e('section', { 'aria-label': 'Sample inputs' },
+    props.workspace && !scene?.view.inspecting && e('section', { 'aria-label': 'Sample inputs' },
       !setup && button(editingSamples ? 'Finish editing samples' : 'Edit samples', () => {
         setEditingSamples(!editingSamples); setPlacement(null); setTentative(null); setSubmission(null);
       }, !!busy || (editingSamples && (sampleRows.some(r => !r.keep) || recipeName !== workspace?.name))),
@@ -397,16 +409,16 @@ export default function ConstructionPanel(props) {
         placement && e('p', { role: 'status' }, placement.first ? 'Click the second point of the sample line.' : 'Click on the canvas to place this input.'),
         button(setup ? 'Start construction' : 'Apply samples', () => request('samples', { sampleInputs: sampleRows, recipeName }), !!busy || !sampleRows.length),
         !setup && button('Reset samples', () => request('resetSamples'), !!busy))),
-    props.workspace && !setup && workspace?.specification && workspace.specificationOutput === finalPoint &&
+    props.workspace && !setup && !scene?.view.inspecting && workspace?.specification && workspace.specificationOutput === finalPoint &&
       e('p', { 'aria-label': 'Workspace specification' }, `Specification proved: ${workspace.specification}`),
-    props.workspace && !setup && e('details', { 'aria-label': 'Requirements' },
+    props.workspace && !setup && !scene?.view.inspecting && e('details', { 'aria-label': 'Requirements' },
       e('summary', null, `Requirements (${requirements.length})`),
       e('p', null, 'Author-declared input requirements, checked exactly on the applied samples. These are not a proof of what the recipe achieves.'),
       e('ol', null, ...requirements.map((item, i) => e('li', { key: i },
         `${item.description} — ${item.status}`, button(`Remove requirement ${i + 1}`, () => request('removeRequirement', { choice: i }), requirementLocked)))),
       ...(scene?.workspace?.nestedRequirements ?? []).map((item, i) => e('p', { key: `nested-${i}` }, `From a nested recipe: ${item.description} — ${item.status}`)),
       e('label', null, 'Condition ', e('select', { 'aria-label': 'Requirement family', value: requirementFamily, disabled: requirementLocked,
-        onChange: ev => { setRequirementFamily(ev.target.value); setRequirementRefs([]); setRequirementValues(['x', '0']); } },
+        onChange: ev => { setRequirementFamily(ev.target.value); setRequirementRefs([]); setRequirementValues(['lineAngle', 'rayAngle'].includes(ev.target.value) ? ['45'] : ['x', '0']); } },
         ...requirementFamilies.map(([value, label]) => e('option', { key: value, value }, label)))),
       ...requirementSpec[2].map((kind, i) => e('label', { key: `requirement-input-${i}` }, ` ${kind} ${i + 1} `,
         e('select', { 'aria-label': `Requirement input ${i + 1}`, value: requirementRefs[i] ?? '', disabled: requirementLocked,
@@ -415,6 +427,13 @@ export default function ConstructionPanel(props) {
           ...(kind === 'requirement' ? requirements.map((r, index) => ({ name: r.description, index })) :
             (workspace?.inputs ?? []).map((r, index) => ({ ...r, index })).filter(r => r.kind === kind))
             .map(r => e('option', { key: r.index, value: r.index }, r.name))))),
+      requirementAngle && e('div', null,
+        e('label', null, 'Angle ', e('select', { 'aria-label': 'Requirement angle', value: requirementValues[0], disabled: requirementLocked,
+          onChange: ev => setRequirementValues([ev.target.value]) },
+          ...['30', '45', '60'].map(value => e('option', { key: value, value }, `${value}°`)))),
+        e('small', null, requirementFamily === 'lineAngle'
+          ? ' The smaller angle between the two lines, independent of their direction.'
+          : ' Point 1 is the vertex; points 2 and 3 determine the rays. Both must differ from the vertex. The supplementary angle does not qualify.')),
       requirementFields && e('div', null,
         e('label', null, 'Coordinate ', e('select', { 'aria-label': 'Requirement coordinate', value: requirementValues[0], disabled: requirementLocked,
           onChange: ev => setRequirementValues(old => [ev.target.value, old[1]]) }, e('option', { value: 'x' }, 'x'), e('option', { value: 'y' }, 'y'))),
@@ -428,7 +447,7 @@ export default function ConstructionPanel(props) {
         setRequirementRefs([]);
       }, requirementLocked || requirementSpec[2].some((_, i) => requirementRefs[i] === undefined))),
     scene?.view.failure && e('p', { role: 'alert' }, `${scene.view.failure} Downstream results are hidden. Edit samples or requirements, or reset samples to try again; the recipe is retained.`),
-    !setup && !editingSamples && e('div', null,
+    !setup && !editingSamples && !scene?.view.inspecting && e('div', null,
     e('label', null, 'Operation ', e('select', { value: operation, disabled: !!busy || !!scene?.view.running, onChange: ev => { invalidate(); setOperation(ev.target.value); setInputs([]); setActive(0); } },
       ...availableOperations.map(o => e('option', { key: o[0], value: o[0] }, o[1])))),
     e('p', { style: { margin: '6px 0' } }, spec[4]),
@@ -456,7 +475,7 @@ export default function ConstructionPanel(props) {
       e('ul', null, ...objects.map(o => e('li', { key: o.index },
         button(`${o.kind} ${o.index}`, () => select(o.index, o.kind)),
         e('span', null, describeObject(o)))))),
-    !setup && !editingSamples && e('fieldset', null, e('legend', null, props.workspace ? 'Recipe output' : 'Submit a coordinate'),
+    !setup && !editingSamples && !scene?.view.inspecting && e('fieldset', null, e('legend', null, props.workspace ? 'Recipe output' : 'Submit a coordinate'),
       e('select', { 'aria-label': props.workspace ? 'Recipe output' : 'Final point', disabled: !!busy || !!scene?.view.running, value: objects.some(o => (props.workspace || o.kind === 'point') && o.index === finalPoint) ? finalPoint : '', onChange: ev => { invalidate(); setFinalPoint(Number(ev.target.value)); } },
         e('option', { value: '', disabled: true }, props.workspace ? 'Select an object' : 'Select a point'),
         ...objects.filter(o => props.workspace || o.kind === 'point').map(o => e('option', { key: o.index, value: o.index }, `${o.kind} ${o.index}${outputNames(o.index) ? ` · ${outputNames(o.index)}` : ''}`))),

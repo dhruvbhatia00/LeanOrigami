@@ -38,3 +38,11 @@ lake lean LeanOrigamiTests/RecipeRequirements.lean
 lake lean LeanOrigamiTests/RecipeContracts.lean
 lake lean LeanOrigamiTests/ArithmeticRecipes.lean
 lake lean LeanOrigamiTests/MeasurementRecipes.lean
+lake lean LeanOrigamiTests/Angles.lean
+lake lean LeanOrigamiTests/Trisection.lean
+lake lean LeanOrigamiTests/TrisectionRecipes.lean -- --run LeanOrigamiTests/TrisectionRecipes.lean
+lake lean .lake/phase7/TrisectionReplay.lean
+
+# Retained calls: theorem reuse, edited fallback, and public multi-output proofs.
+lake lean LeanOrigamiTests/CompositionExport.lean -- --run LeanOrigamiTests/CompositionExport.lean
+lake lean .lake/composition/Replay.lean

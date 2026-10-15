@@ -1,4 +1,4 @@
-import LeanOrigami.Construction.Condition
+import LeanOrigami.Construction.AngleCondition
 
 /-!
 # Recipe requirement data and authoring
@@ -97,6 +97,12 @@ def RequirementInput.condition (input : RequirementInput) (existing : Array Cond
       | "x" => pure Component.x | "y" => pure Component.y
       | _ => throw "Choose the x or y coordinate."
     return .component (← ref 0) field
+  let angle : Except String NamedAngle := do
+    match ← text 0 with
+    | "30" => pure .thirty
+    | "45" => pure .fortyFive
+    | "60" => pure .sixty
+    | _ => throw "Choose a supported exact angle: 30°, 45°, or 60°."
   let old (i : Nat) : Except String Condition := do
     let index ← ref i
     match existing[index]? with
@@ -112,6 +118,8 @@ def RequirementInput.condition (input : RequirementInput) (existing : Array Cond
   | "collinear" => return .collinear (← ref 0) (← ref 1) (← ref 2)
   | "parallel" => return .parallel (← ref 0) (← ref 1)
   | "perpendicular" => return .perpendicular (← ref 0) (← ref 1)
+  | "lineAngle" => return .lineAngle (← angle) (← ref 0) (← ref 1)
+  | "rayAngle" => return .rayAngle (← angle) (← ref 0) (← ref 1) (← ref 2)
   | "coordinateEq" => return .eq (← component) (← rational 1)
   | "coordinateLe" => return .le (← component) (← rational 1)
   | "coordinateLt" => return .lt (← component) (← rational 1)

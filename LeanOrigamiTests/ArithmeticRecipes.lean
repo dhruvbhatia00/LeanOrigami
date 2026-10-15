@@ -73,13 +73,13 @@ private def outputCases : IO Unit := do
   let some bisector := ((RecipeGroup.outputs group)[1]? : Option RecipeOutput) | throw (IO.userError "Missing line output")
   require "both named outputs survive grouping"
     (group.outputs.size == 2 && bisector.index == 3)
-  let used : Session ← get (used.nameOutput "Centre" 4)
-  let saved : RecipeTemplate ← get (used.template midpointRecipe.parameters 4)
+  let used : Session ← get (used.nameOutput "Centre" 2)
+  let saved : RecipeTemplate ← get (used.template midpointRecipe.parameters 2)
   let reopened : Session ← get (({ seeds := points, objects := points } : Session).useRecipe "" saved #[0, 1])
   let some centre := (reopened.outputs[0]? : Option RecipeOutput) | throw (IO.userError "Missing named point")
   let some nested := (reopened.groups[0]? : Option RecipeGroup) | throw (IO.userError "Missing nested group")
   require "named outputs survive nested save and replay"
-    (centre.name == "Centre" && centre.index == 4 && nested.outputs.size == 2)
+    (centre.name == "Centre" && centre.index == 2 && nested.outputs.size == 2)
   let decoded : RecipeGroup ← get (Lean.fromJson? (Lean.toJson group) : Except String RecipeGroup)
   require "named history JSON round-trip" (decoded.source == group.source)
   require "duplicate output names are rejected" ((used.nameOutput "Centre" 0).toOption.isNone)

@@ -1,4 +1,4 @@
-import LeanOrigami.Widget.Saved
+import LeanOrigami.Widget.Export
 import LeanOrigami.Widget.Workspace
 
 /-!
@@ -57,8 +57,8 @@ def run : IO Unit := do
   require "forward reference rejected"
     ((RecipeTemplate.validate { midpointRecipe with steps := [.fold (.axiom1 ⟨0⟩ ⟨2⟩)] }).toOption.isNone)
   let half ← get (({} : Session).useRecipe "Midpoint" midpointRecipe #[0, 1])
-  require "midpoint on proof seeds" ((← get (half.selected 4 .x)) == (1 / 2 : Scalar))
-  require "one group with three primitives" (half.groups.size == 1 && half.program.length == 3)
+  require "midpoint on proof seeds" ((← get (half.selected 2 .x)) == (1 / 2 : Scalar))
+  require "one retained call" (half.groups.size == 1 && half.program.length == 1)
   require "atomic recipe undo" ((← get half.undo).program.isEmpty)
   require "duplicate inputs reject geometrically"
     ((({} : Session).useRecipe "Midpoint" midpointRecipe #[0, 0]).toOption.isNone)
@@ -66,23 +66,24 @@ def run : IO Unit := do
     ((({} : Session).useRecipe "Midpoint" midpointRecipe #[0, 99]).toOption.isNone)
   require "wrong arity rejected"
     ((({} : Session).useRecipe "Midpoint" midpointRecipe #[0]).toOption.isNone)
-  require "wrong object kind rejected" ((half.useRecipe "Midpoint" midpointRecipe #[0, 2]).toOption.isNone)
+  let withLine ← get ((← get (half.preview (.axiom1 ⟨0⟩ ⟨1⟩))).choose 0)
+  require "wrong object kind rejected" ((withLine.useRecipe "Midpoint" midpointRecipe #[0, 3]).toOption.isNone)
 
   let seeds : Program.State Scalar := [.point (2, 4), .point (6, 8)]
   let changed ← get (({ seeds, objects := seeds } : Session).useRecipe "Midpoint" midpointRecipe #[1, 0])
   require "changed, rotated inputs recompute both coordinates"
-    ((← get (changed.selected 4 .x)) == 4 && (← get (changed.selected 4 .y)) == 6)
-  require "sample workspace cannot pass the standard-seed checker" ((Program.run changed.program).toOption.isNone)
+    ((← get (changed.selected 2 .x)) == 4 && (← get (changed.selected 2 .y)) == 6)
+  require "sample workspace cannot pass the standard-seed checker" ((← prepareComposition changed 2 .x).toOption.isNone)
 
-  let quarter ← get (half.useRecipe "Midpoint" midpointRecipe #[0, 4])
-  let nested ← get (quarter.template midpointRecipe.parameters 7)
+  let quarter ← get (half.useRecipe "Midpoint" midpointRecipe #[0, 2])
+  let nested ← get (quarter.template midpointRecipe.parameters 3)
   let expanded ← get (({} : Session).useRecipe "Quarter" nested #[0, 1])
-  require "nested recipe expands and groups" ((← get (expanded.selected 7 .x)) == (1 / 4 : Scalar) &&
-    expanded.groups.size == 3 && expanded.program.length == 6)
+  require "nested recipe retains its private scope" ((← get (expanded.selected 2 .x)) == (1 / 4 : Scalar) &&
+    expanded.groups.size == 1 && expanded.program.length == 1)
   require "nested call undo is atomic" ((← get expanded.undo).program.isEmpty)
   let changedNested ← get (({ seeds, objects := seeds } : Session).useRecipe "Quarter" nested #[0, 1])
   require "nested recipe recomputes on new samples"
-    ((← get (changedNested.selected 7 .x)) == 3 && (← get (changedNested.selected 7 .y)) == 5)
+    ((← get (changedNested.selected 2 .x)) == 3 && (← get (changedNested.selected 2 .y)) == 5)
 
   let perpendicular : RecipeTemplate := {
     parameters := #[⟨"Through", .point⟩, ⟨"Reference", .line⟩]
@@ -99,7 +100,7 @@ def run : IO Unit := do
   let axes : Program.State Scalar := [.line (Line.chart 0 0), .line (Line.horizontal 0)]
   let paused ← get (({ seeds := axes, objects := axes } : Session).useRecipe "Bisect" bisect #[0, 1])
   require "ambiguous fold pauses with two current choices"
-    (paused.running.isSome && paused.pending.any (fun p => p.2.length == 2))
+    (paused.running.isSome && paused.active.pending.any (fun p => p.2.length == 2))
   require "pending recipe cannot be saved" ((paused.template bisect.parameters 0).toOption.isNone)
   require "out-of-range branch rejected" ((paused.choose 99).toOption.isNone)
   let first ← get (paused.choose 0)
@@ -118,7 +119,7 @@ def run : IO Unit := do
   let partialCall ← get (({ seeds := threeSeeds, objects := threeSeeds } : Session).useRecipe
     "Pause after a fold" prefixed #[0, 1, 2])
   require "cancellation rolls back completed prefix steps"
-    (partialCall.program.length == 1 && (← get partialCall.undo).objects.length == 3)
+    (partialCall.active.program.length == 1 && (← get partialCall.undo).objects.length == 3)
 
   -- Fail after a branch, then verify that the still-available snapshot can be cancelled.
   let failing : RecipeTemplate := { bisect with steps := bisect.steps ++ [.intersect ⟨2⟩ ⟨2⟩], output := 3 }
@@ -127,15 +128,13 @@ def run : IO Unit := do
   require "failed continuation can still be cancelled" ((← get waiting.undo).program.isEmpty)
 
   IO.FS.createDirAll ".lake/recipes"
-  let target ← get (half.selected 4 .x)
-  let certificate ← get (← Text.prepareExact half.program ⟨4⟩ .x target)
+  let saved ← get (← prepareComposition half 2 .x)
   let history := "#[" ++ String.intercalate ", " (half.groups.toList.map RecipeGroup.source) ++ "]"
-  let saved := savedSource certificate 4 .x
   let source := "import LeanOrigami.Widget\nopen LeanOrigami LeanOrigami.Widget\n\n" ++
     "origami_recipe recorded samples ([(\"First point\", .point (2, 4)), (\"Second point\", .point (6, 8))]) saved (" ++
     nested.source ++ ")\n\n" ++
     "theorem recipe_half : ConstructibleNumber (1 / 2 : ℝ) := by\n" ++
-    "  origami history (" ++ history ++ ") saved (" ++ saved.replace "\n" "\n  " ++ ")\n" ++
+    "  origami history (" ++ history ++ ") composed (" ++ saved.replace "\n" "\n  " ++ ")\n" ++
     "#print axioms recipe_half\n#print axioms SavedConstruction.sound\n"
   IO.FS.writeFile ".lake/recipes/Replay.lean" source
   IO.println "PASS: recipe and proof source exported; fresh kernel replay remains separate"

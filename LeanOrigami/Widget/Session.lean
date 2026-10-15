@@ -1,28 +1,23 @@
 import LeanOrigami.Scalar.FoldDiscovery
-import LeanOrigami.Widget.Recipe
+import LeanOrigami.Widget.Execution
 import Lean.Data.Json.FromToJson
 
 /-!
 # Exact construction editing
 
-An immutable session holds the same program consumed by the text exporter.
+An immutable session holds scoped calls and primitive selections.
 Candidate indices are meaningful only within one session snapshot; committing
 one stores its exact crease. Display coordinates never enter the program.
 -/
 
 namespace LeanOrigami.Widget
 
-/-- Continuation of a recipe call. Undo rolls back to `start`; every paused
-branch still refers to the current exact snapshot. -/
-structure RecipeCursor where
-  remaining : List RecipeOperation
-  group : RecipeGroup
-  nested : Array RecipeGroup
-  checks : Array RecipeRequirement := #[]
+mutual
 
-/-- An editing snapshot. Undo and asynchronous requests can retain older snapshots. -/
+/-- An editing snapshot contains only public objects in its current scope.
+A running recipe owns a separate child session for its private construction. -/
 structure Session where
-  program : Program Scalar := []
+  program : Execution.History Scalar := []
   objects : Program.State Scalar := Program.initial
   pending : Option (FoldRequest × List (Line Scalar)) := none
   seeds : Program.State Scalar := Program.initial
@@ -33,6 +28,17 @@ structure Session where
   requirements : Array Condition := #[]
   checks : Array RecipeRequirement := #[]
   outputs : Array RecipeOutput := #[]
+
+/-- Private continuation of a scoped call. Cancelling discards the child and
+leaves the parent's public objects and history intact. -/
+structure RecipeCursor where
+  name : String
+  recipe : RecipeTemplate
+  arguments : Array Nat
+  inner : Session
+  remaining : List RecipeOperation
+
+end
 
 /-- Human-readable geometric failures, shared by all editing operations. -/
 def errorMessage : ConstructionError → String
@@ -46,6 +52,12 @@ def errorMessage : ConstructionError → String
   | .noFoldSolutions => "No real fold satisfies these inputs."
   | .incorrectOutput => "The selected result does not satisfy this operation."
   | .targetMismatch => "The selected coordinate does not equal the goal."
+
+/-- Open a legacy primitive program in the scoped editor without renumbering
+its original objects. Old source remains readable while new saves retain calls. -/
+def Session.ofProgram (program : Program Scalar) : Except String Session := do
+  let objects ← (Program.run program).mapError errorMessage
+  return { program := Execution.ofProgram program, objects }
 
 /-- Decode ordered object selections. The ordinary resolver checks their kinds. -/
 def foldRequest (axiomNumber : Nat) (inputs : List Nat) : Except String FoldRequest :=
@@ -71,7 +83,7 @@ private def Session.append (session : Session) (instruction : Instruction Scalar
     Except String Session := do
   let object ← (Program.step session.objects instruction).mapError errorMessage
   return { session with
-    program := session.program ++ [instruction]
+    program := session.program ++ [Execution.Step.primitive instruction]
     objects := session.objects ++ [object], pending := none, result := none }
 
 /-- Compute and append an exact intersection of two previously constructed lines. -/
@@ -81,122 +93,146 @@ def Session.intersect (session : Session) (left right : Nat) : Except String Ses
   let p ← (Solver.intersect l r).mapError errorMessage
   session.append (.intersect ⟨left⟩ ⟨right⟩ p.val)
 
-/-- Continue discovery, retaining the valid prefix if a step fails. The cursor
-keeps the unexecuted instructions; callers choose whether to expose this draft. -/
-private def Session.advance (session : Session) (steps : List RecipeOperation) : Session :=
-  let checks := session.running.map (·.checks) |>.getD #[]
-  let failed := checks.find? fun check => check.before == session.program.length &&
-    !check.condition.checkObjects session.objects
+/-- The scope currently being explored, including a paused nested call. -/
+partial def Session.active (session : Session) : Session :=
+  match session.running with
+  | none => session
+  | some cursor => cursor.inner.active
+
+/-- Record a completed call as one node and expose only its selected outputs. -/
+private def Session.finishCall (session : Session) (cursor : RecipeCursor) : Except String Session := do
+  let inner := cursor.inner
+  if cursor.name.isEmpty then
+    return { inner with result := some cursor.recipe.output }
+  let outputs ← (Composition.select (K := Scalar) inner.objects cursor.recipe.publicOutputs.toList).mapError errorMessage
+  let base := session.objects.length
+  let program : Execution.History Scalar := session.program ++ [Execution.Step.call cursor.name cursor.recipe cursor.arguments outputs inner.program]
+  return { session with
+    program, objects := session.objects ++ outputs,
+    groups := Execution.groups (K := Scalar) session.seeds.length program,
+    running := none, pending := none, failure := none, result := some base }
+
+/-- Validate inputs in the caller before entering a private recipe scope. -/
+private def Session.startRecipe (session : Session) (name : String) (recipe : RecipeTemplate)
+    (arguments : Array Nat) : Except String Session := do
+  if session.running.isSome then throw "Finish or cancel the current recipe first."
+  let _ ← recipe.validate
+  unless arguments.size == recipe.parameters.size do throw "Select every recipe input."
+  let inputs ← (Composition.select (K := Scalar) session.objects arguments.toList).mapError errorMessage
+  for (object, parameter) in inputs.zip recipe.parameters.toList do
+    unless objectKind object == parameter.kind do
+      throw s!"Recipe input {parameter.name} has the wrong kind."
+  let requirementsHold := recipe.requirements.all (Condition.checkObjects inputs)
+  if requirementsHold && !name.isEmpty && Execution.isMidpoint recipe then
+    let outputs ← Execution.midpointOutputs (K := Scalar) inputs
+    let program : Execution.History Scalar := session.program ++ [Execution.Step.call name recipe arguments outputs []]
+    return { session with
+    program, objects := session.objects ++ outputs,
+      groups := Execution.groups (K := Scalar) session.seeds.length program,
+      result := some session.objects.length, pending := none, failure := none }
+  let inner : Session := {
+    seeds := inputs, objects := inputs,
+    requirements := recipe.requirements, checks := recipe.checks, outputs := recipe.outputs }
+  return { session with
+    pending := none, failure := none,
+    running := some ⟨name, recipe, arguments, inner, recipe.steps⟩ }
+
+/-- Discover operations inside their own scope. A branch pause or failed
+condition retains the private continuation; no intermediate leaks to the parent. -/
+private partial def Session.advance (session : Session) : Session := Id.run do
+  let some cursor := session.running | return session
+  let inner := cursor.inner
+  if inner.running.isSome then
+    let inner := inner.advance
+    let next := { session with running := some { cursor with inner } }
+    if inner.running.isSome || inner.pending.isSome || inner.failure.isSome then
+      return { next with failure := inner.failure }
+    return next.advance
+  if inner.pending.isSome || inner.failure.isSome then
+    return { session with failure := inner.failure }
+  if inner.program.isEmpty && !inner.requirements.all (Condition.checkObjects inner.objects) then
+    let failure := some "The recipe's input requirements are not satisfied."
+    return { session with failure, running := some { cursor with inner := { inner with failure } } }
+  let failed := inner.checks.find? fun check => check.before == inner.program.length &&
+    !check.condition.checkObjects inner.objects
   if let some check := failed then
-    { session with pending := none, failure := some ("Requirement failed: " ++
-      conditionDescription (fun i => s!"object {i}") check.condition) }
-  else match steps with
-  | [] => match session.running with
-    | none => session
-    | some cursor =>
-      let groups := if cursor.group.name.isEmpty || cursor.group.count == 0 then session.groups
-        else session.groups.push cursor.group
-      { session with
-        running := none, result := some cursor.group.output.index
-        groups := groups ++ cursor.nested, failure := none }
+    let failure := some ("Requirement failed: " ++
+      conditionDescription (fun i => s!"object {i}") check.condition)
+    return { session with failure, running := some { cursor with inner := { inner with failure } } }
+  match cursor.remaining with
+  | [] =>
+    match session.finishCall cursor with
+    | .ok finished => return finished
+    | .error message => return { session with failure := some message }
   | step :: rest =>
     let attempt : Except String Session := do
       match step with
-      | .intersect l r => session.intersect l.index r.index
+      | .intersect l r => inner.intersect l.index r.index
+      | .call name recipe arguments => inner.startRecipe name recipe arguments
       | .fold request =>
-        let preview ← session.preview request
+        let preview ← inner.preview request
         let preview := { preview with pending := preview.pending.map fun (request, choices) =>
-          (request, RecipeRequirement.filterCreases checks (session.program.length + 1)
-            session.objects choices) }
+          (request, RecipeRequirement.filterCreases inner.checks (inner.program.length + 1)
+            inner.objects choices) }
         match preview.pending with
         | some (_, []) => throw "No crease satisfies the next branch/output conditions."
         | some (_, [crease]) => preview.append (.fold request crease)
         | some _ => pure preview
         | none => throw "Recipe discovery did not produce a preview."
     match attempt with
-    | .error message => { session with
-        pending := none
-        failure := some s!"Step {session.program.length + 1}: {message}" }
-    | .ok next =>
-      let next : Session := { next with running := next.running.map fun (cursor : RecipeCursor) => { cursor with remaining := rest } }
-      if next.pending.isSome then next else Session.advance next rest
+    | .error message =>
+      let failure := some s!"Step {inner.program.length + 1}: {message}"
+      return { session with failure, running := some { cursor with inner := { inner with failure } } }
+    | .ok inner =>
+      let next := { session with running := some { cursor with inner, remaining := rest } }
+      if inner.pending.isSome then return next else return next.advance
 
-/-- Convert a replay failure to the ordinary atomic-call error, unless the
-workspace needs its valid prefix for diagnosis and sample editing. -/
 private def Session.replayResult (session : Session) (retainFailure : Bool) : Except String Session := do
   if !retainFailure then
     if let some message := session.failure then throw message
   return session
 
-/-- Commit a current exact choice, then continue a paused recipe, if any.
-Workspaces can retain a failed continuation without losing the full recipe. -/
-def Session.choose (session : Session) (index : Nat) (retainFailure : Bool := false) : Except String Session := do
+/-- Commit a crease in the active scope, then resume its containing calls. -/
+partial def Session.choose (session : Session) (index : Nat) (retainFailure : Bool := false) :
+    Except String Session := do
+  if let some cursor := session.running then
+    let inner ← cursor.inner.choose index retainFailure
+    let next := { session with failure := none, running := some { cursor with inner } }
+    return ← next.advance.replayResult retainFailure
   let some (request, choices) := session.pending | throw "Preview a fold first."
   let some crease := choices[index]? | throw "This fold choice is no longer available."
-  let next ← session.append (.fold request crease)
-  match session.running with
-  | none => return next
-  | some cursor => (next.advance cursor.remaining).replayResult retainFailure
+  session.append (.fold request crease)
 
-/-- Instantiate on existing exact objects. No sample coordinates or old branch
-indices survive. Empty names replay a workspace without grouping its whole body. -/
+/-- Apply a retained call to public inputs. Proved midpoint calls compute only
+their output; other definitions use the same scoped discovery and fallback. -/
 def Session.useRecipe (session : Session) (name : String) (recipe : RecipeTemplate)
     (arguments : Array Nat) (retainFailure : Bool := false) : Except String Session := do
-  if session.running.isSome then throw "Finish or cancel the current recipe first."
-  let _ ← recipe.validate
-  unless arguments.size == recipe.parameters.size do throw "Select every recipe input."
-  for (argument, parameter) in arguments.toList.zip recipe.parameters.toList do
-    let some object := session.objects[argument]?
-      | throw s!"Recipe input {parameter.name} does not exist."
-    unless objectKind object == parameter.kind do
-      throw s!"Recipe input {parameter.name} has the wrong kind."
-  let base := session.objects.length
-  let relocate (i : Nat) := if i < arguments.size then arguments[i]! else base + (i - arguments.size)
-  let steps := recipe.steps.map (RecipeOperation.remap relocate)
-  let relocateOutput (output : RecipeOutput) := { output with index := relocate output.index }
-  let group : RecipeGroup := ⟨name, session.program.length, steps.length, arguments,
-    ⟨relocate recipe.output, recipe.namedOutputs.map relocateOutput⟩⟩
-  let nested := recipe.groups.map fun g => { g with
-    start := session.program.length + g.start, inputs := g.inputs.map relocate, output := ⟨relocate g.output.index, g.outputs.map relocateOutput⟩ }
-  let inputChecks := recipe.requirements.map fun condition =>
-    RecipeRequirement.mk session.program.length session.program.length (condition.remap relocate)
-  let nestedChecks := recipe.checks.map fun check => { check with
-    before := session.program.length + check.before, owner := session.program.length + check.owner
-    condition := check.condition.remap relocate }
-  let session := { session with
-    pending := none, failure := none
-    outputs := if name.isEmpty then recipe.outputs else session.outputs
-    requirements := if name.isEmpty then recipe.requirements else session.requirements
-    checks := session.checks ++ (if name.isEmpty then #[] else inputChecks) ++ nestedChecks
-    running := some ⟨steps, group, nested, inputChecks ++ nestedChecks⟩ }
-  (session.advance steps).replayResult retainFailure
+  let started ← session.startRecipe name recipe arguments
+  started.advance.replayResult retainFailure
 
-/-- Remove one primitive or an entire completed/paused recipe call. -/
+/-- Undo one public node, or cancel a private continuation atomically. -/
 def Session.undo (session : Session) : Except String Session := do
-  let stop := match session.running with
-    | some cursor => cursor.group.start
-    | none => (session.groups.toList.filter fun g => g.start + g.count == session.program.length)
-        |>.foldl (fun n g => min n g.start) (session.program.length - 1)
+  if session.running.isSome then return { session with running := none, pending := none, failure := none }
+  let stop := session.program.length - 1
   let program := session.program.take stop
-  let objects ← (Program.execute session.seeds program).mapError errorMessage
+  let objects ← (Execution.replay session.seeds program).mapError errorMessage
   return { session with
-    program, objects, pending := none, running := none, result := none, failure := none
-    groups := session.groups.filter (fun g => g.start + g.count ≤ stop)
-    checks := session.checks.filter (fun check => check.owner < stop)
+    program, objects, pending := none, result := none, failure := none,
+    groups := Execution.groups (K := Scalar) session.seeds.length program,
+    checks := session.checks.filter (fun check => check.owner < stop),
     outputs := session.outputs.filter (fun output => output.index < objects.length) }
 
-/-- Record operations, not the exact results on the workspace's sample inputs. -/
+/-- Save operations and nested definitions, never old sample coordinates. -/
 def Session.template (session : Session) (parameters : Array RecipeParameter) (output : Nat) :
     Except String RecipeTemplate := do
   if session.running.isSome then throw "Finish or cancel the recipe before saving."
   unless parameters.size == session.seeds.length do throw "The workspace parameters changed."
-  let recipe : RecipeTemplate := ⟨parameters, session.program.map RecipeOperation.ofInstruction,
+  let recipe : RecipeTemplate := ⟨parameters, session.program.map Execution.Step.operation,
     output, session.groups, session.requirements, session.checks, session.outputs⟩
   let _ ← recipe.validate
   return recipe
 
-/-- Name an existing output for later callers. Renaming a result changes only
-metadata; the reference still points to a checked construction object. -/
+/-- Name a public result. Private objects are absent from this scope. -/
 def Session.nameOutput (session : Session) (name : String) (index : Nat) : Except String Session := do
   if session.running.isSome then throw "Finish or cancel the recipe before naming outputs."
   let name := name.trimAscii.toString
@@ -205,10 +241,25 @@ def Session.nameOutput (session : Session) (name : String) (index : Nat) : Excep
   if session.outputs.any (·.name == name) then throw "Use a distinct name for each output."
   return { session with outputs := session.outputs.push ⟨name, index⟩ }
 
-/-- Read the actual selected scalar; screen coordinates cannot supply it. -/
-def Session.selected (session : Session) (point : Nat) (coordinate : Coordinate) :
-    Except String Scalar := do
+/-- Read a public point's exact coordinate. -/
+def Session.selected (session : Session) (point : Nat) (coordinate : Coordinate) : Except String Scalar := do
   return coordinate.get (← (Program.point session.objects ⟨point⟩).mapError errorMessage)
+
+/-- Inspect a completed call in a separate local scope. Recorded choices are
+preserved; optimized midpoint calls reconstruct their small explanation lazily. -/
+def Session.inspect (session : Session) (index : Nat) : Except String Session := do
+  let some (Execution.Step.call _ recipe arguments _ body) := session.program[index]?
+    | throw "Choose a completed recipe call to inspect."
+  let inputs ← (Composition.select (K := Scalar) session.objects arguments.toList).mapError errorMessage
+  if body.isEmpty then
+    ({ seeds := inputs, objects := inputs } : Session).useRecipe "" recipe (Array.range inputs.length)
+  else
+    let objects ← (Execution.replay inputs body).mapError errorMessage
+    return {
+      seeds := inputs, objects, program := body,
+      groups := Execution.groups (K := Scalar) inputs.length body,
+      result := some recipe.output, outputs := recipe.namedOutputs,
+      requirements := recipe.requirements, checks := recipe.checks }
 
 /-- A display approximation with its enclosing-ball radius, both decimal strings.
 Conversion to machine numbers is exclusively a rendering concern. -/
@@ -270,6 +321,7 @@ def historyStep (output : Nat) : Instruction Scalar → HistoryStep
 
 /-- Display data contains no editable exact coordinates. -/
 structure View where
+  inspecting : Bool := false
   objects : Array ObjectView
   choices : Array ObjectView
   steps : Nat
@@ -282,14 +334,22 @@ structure View where
   deriving Lean.ToJson, Lean.FromJson
 
 /-- Render a snapshot at the requested precision, preserving exact candidate identity. -/
-def Session.view (session : Session) (bits : Nat) : View :=
-  let choices := match session.pending with | none => [] | some (_, ls) => ls
-  { objects := session.objects.toArray.mapIdx fun i o => objectView i bits o
+def Session.view (session : Session) (bits : Nat) : View := Id.run do
+  let active := session.active
+  let choices := match active.pending with | none => [] | some (_, ls) => ls
+  let mut base := active.seeds.length
+  let mut history := #[]
+  for step in active.program do
+    let entry := match step with
+      | .primitive instruction => historyStep base instruction
+      | .call name _ arguments _ _ => ⟨"Recipe: " ++ name, arguments, base⟩
+    history := history.push entry
+    base := base + step.outputs.length
+  return {
+    objects := active.objects.toArray.mapIdx fun i o => objectView i bits o
     choices := choices.toArray.mapIdx fun i l => objectView i bits (.line l)
-    steps := session.program.length
-    history := session.program.toArray.mapIdx fun i step =>
-      historyStep (session.seeds.length + i) step
-    groups := session.groups, running := session.running.isSome, result := session.result
-    failure := session.failure, outputs := session.outputs }
+    steps := active.program.length, history, groups := active.groups,
+    running := session.running.isSome, result := session.result,
+    failure := session.failure, outputs := active.outputs }
 
 end LeanOrigami.Widget

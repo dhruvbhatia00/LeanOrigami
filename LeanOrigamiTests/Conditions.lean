@@ -3,8 +3,9 @@ import LeanOrigami.Widget.Recipe
 /-!
 # Exact requirements, without the widget or Hex runtime
 
-These examples exercise validity, Boolean logic, geometry, and serialization.
-The generic correctness theorems cover every exact ordered field.
+Kernel-checked examples exercise validity, Boolean logic, and geometry.
+Executable assertions cover recipe-reference validation, including its display
+metadata. The generic correctness theorems cover every exact ordered field.
 -/
 namespace LeanOrigami.Tests.Conditions
 open LeanOrigami LeanOrigami.Widget
@@ -25,20 +26,25 @@ example : (Condition.not (.eq (.constant 1 0) (.constant 0 1))).checkObjects obj
 example : (Condition.and (.onXAxis 1) (.lt (.constant 0 1) (.component 1 .x))).checkObjects objects = true := by decide +kernel
 example : (Condition.le (.component 0 .x) (.constant 0 1)).checkObjects objects = true := by decide +kernel
 
--- Missing or wrongly typed input references cannot hide inside NOT.
-example : (RecipeTemplate.validate {
-    parameters := #[⟨"A", .point⟩],
-    requirements := #[.not (.sameLine 0 0)] }).toOption.isNone = true := by decide +kernel
-
--- Nested checks may refer to an earlier result, never a future one.
-example : (RecipeTemplate.validate {
+-- Template validation also processes display strings, including trimmed output
+-- names. Test that UI behavior executably; the mathematical checks above remain
+-- kernel-checked. Wrongly typed references cannot hide inside NOT, and nested
+-- checks may refer to an earlier result but never to a future one.
+#eval show IO Unit from do
+  let mistyped : RecipeTemplate := {
+    parameters := #[⟨"A", .point⟩], requirements := #[.not (.sameLine 0 0)] }
+  unless mistyped.validate.toOption.isNone do
+    throw (IO.userError "Wrong-kind input reference accepted under NOT")
+  let afterFold : RecipeTemplate := {
     parameters := #[⟨"A", .point⟩, ⟨"B", .point⟩],
     steps := [.fold (.axiom1 ⟨0⟩ ⟨1⟩)],
-    checks := #[⟨1, 0, .onLine 0 2⟩] }).toOption.isSome = true := by decide +kernel
-example : (RecipeTemplate.validate {
-    parameters := #[⟨"A", .point⟩, ⟨"B", .point⟩],
-    steps := [.fold (.axiom1 ⟨0⟩ ⟨1⟩)],
-    checks := #[⟨0, 0, .onLine 0 2⟩] }).toOption.isNone = true := by decide +kernel
+    checks := #[⟨1, 0, .onLine 0 2⟩] }
+  unless afterFold.validate.toOption.isSome do
+    throw (IO.userError "Valid check after its producing fold rejected")
+  let beforeFold := { afterFold with checks := #[⟨0, 0, .onLine 0 2⟩] }
+  unless beforeFold.validate.toOption.isNone do
+    throw (IO.userError "Forward reference accepted in a nested check")
+  IO.println "PASS: typed input conditions and nested-check boundaries"
 
 #print axioms Condition.checkObjects_map_iff
 #print axioms Condition.onLine_holds

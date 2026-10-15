@@ -1,4 +1,5 @@
 import LeanOrigami.Widget.Workspace
+import LeanOrigami.Widget.Export
 
 /-!
 # Exact sample setup and replay
@@ -45,17 +46,17 @@ def run : IO Unit := do
   require "setup uses only chosen samples" (session.objects.length == 2 && session.program.isEmpty)
   let built ← get (session.useRecipe "Midpoint" midpointRecipe #[0, 1])
   let (moved, preview) ← get (state.applySamples built "midpoint"
-    #[pointInput "A" "2" "4", pointInput "B" "6" "8"] 4)
+    #[pointInput "A" "2" "4", pointInput "B" "6" "8"] 2)
   require "new samples recompute midpoint"
-    ((← get (preview.selected 4 .x)) == 4 && (← get (preview.selected 4 .y)) == 6)
-  require "sample proof seeds are not accepted" (Program.run preview.program).toOption.isNone
-  let (_, unchanged) ← get (moved.applySamples preview "midpoint" moved.inputs 4)
-  require "keep retains exact current samples" ((← get (unchanged.selected 4 .x)) == 4)
-  let (_, reset) ← get (moved.resetSamples preview 4)
+    ((← get (preview.selected 2 .x)) == 4 && (← get (preview.selected 2 .y)) == 6)
+  require "sample proof seeds are not accepted" ((← prepareComposition preview 2 .x).toOption.isNone)
+  let (_, unchanged) ← get (moved.applySamples preview "midpoint" moved.inputs 2)
+  require "keep retains exact current samples" ((← get (unchanged.selected 2 .x)) == 4)
+  let (_, reset) ← get (moved.resetSamples preview 2)
   require "reset restores initial samples and retains instructions"
-    ((← get (reset.selected 4 .x)) == (1 / 2 : Scalar) && reset.program.length == 3)
+    ((← get (reset.selected 2 .x)) == (1 / 2 : Scalar) && reset.program.length == 1)
   require "parameter identities cannot change"
-    ((state.applySamples built "midpoint" #[pointInput "C" "0" "0", b] 4).toOption.isNone)
+    ((state.applySamples built "midpoint" #[pointInput "C" "0" "0", b] 2).toOption.isNone)
 
   -- A valid recipe whose third step fails only for the changed samples.
   let three := inputs.push (pointInput "C" "0" "1")
@@ -66,20 +67,20 @@ def run : IO Unit := do
     output := 5 }
   let built ← get (session.useRecipe "Crossing" crossing #[0, 1, 2])
   let (failed, partialReplay) ← get (state.applySamples built "crossing"
-    (three.set! 2 (pointInput "C" "2" "0")) 5)
+    (three.set! 2 (pointInput "C" "2" "0")) 3)
   require "failure retains valid prefix and identifies its step"
-    (partialReplay.program.length == 2 && partialReplay.failure.any (·.startsWith "Step 3:"))
+    (partialReplay.active.program.length == 2 && partialReplay.failure.any (·.startsWith "Step 3:"))
   require "full instructions survive a failed preview"
-    (failed.replaying && failed.template.any (fun r => r.steps.length == 3 && r.output == 5))
+    (failed.replaying && failed.template.any (fun r => r.steps.length == 1 && r.output == 3))
   require "partial preview cannot be recorded as a complete recipe"
     ((partialReplay.template crossing.parameters 0).toOption.isNone)
   let (recovered, complete) ← get (failed.applySamples partialReplay "crossing"
     (three.set! 2 (pointInput "C" "0" "2")) 0)
   require "recovery restores the retained output and groups"
-    (!recovered.replaying && complete.result == some 5 && complete.groups.size == 1)
-  require "recovery preserves all steps" (complete.program.length == 3 && complete.failure.isNone)
+    (!recovered.replaying && complete.result == some 3 && complete.groups.size == 1)
+  require "recovery preserves all steps" (complete.program.length == 1 && complete.failure.isNone)
   let (_, restored) ← get (failed.resetSamples partialReplay 0)
-  require "reset also recovers from failure" (restored.result == some 5 && restored.failure.isNone)
+  require "reset also recovers from failure" (restored.result == some 3 && restored.failure.isNone)
 
   let axes := #[lineInput "L" #["1", "0", "0"], lineInput "M" #["0", "1", "0"]]
   let (state, session) ← get (empty.applySamples noSeeds "bisectors" axes 0)
@@ -90,7 +91,7 @@ def run : IO Unit := do
   let chosen ← get (paused.choose 0)
   let (state, fresh) ← get (state.applySamples chosen "bisectors" state.inputs 2)
   require "sample replay asks for a fresh branch"
-    (state.replaying && fresh.pending.any (fun p => p.2.length == 2))
+    (state.replaying && fresh.active.pending.any (fun p => p.2.length == 2))
   let selected ← get (fresh.choose 1 (retainFailure := true))
   require "fresh branch completes the retained recipe" (selected.running.isNone && selected.result == some 2)
 

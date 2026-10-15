@@ -1,5 +1,6 @@
 import LeanOrigami.Scalar
 import LeanOrigami.Construction.Checker
+import LeanOrigami.Construction.Midpoint
 import LeanOrigami.Solvers.Candidates
 
 /-!
@@ -145,6 +146,22 @@ def step (ref : IO.Ref ArithmeticLog) (state : Program.State Scalar)
           throw (IO.userError "recording: missing intersection arithmetic")
     else throw (IO.userError "recording: parallel intersection")
   return state ++ [object]
+
+/-- Record the public midpoint formula directly. This captures arithmetic
+provenance without constructing or traversing the recipe's auxiliary creases. -/
+def midpoint (ref : IO.Ref ArithmeticLog) (first second : Point Scalar) : IO (Point Scalar) := do
+  let output := @Midpoint.point Scalar (field ref) first second
+  for value in [output.1, output.2] do
+    if (← locate ref value).isNone then
+      throw (IO.userError "recording: missing midpoint arithmetic")
+  return output
+
+/-- Seed a recording with exact rational coordinates such as the original
+points. Nonrational values must already have construction provenance. -/
+def seed (ref : IO.Ref ArithmeticLog) (values : List Scalar) : IO Unit := do
+  for value in values do
+    if (← locate ref value).isNone then
+      throw (IO.userError "recording: input has no arithmetic provenance")
 
 /-- Record a saved program, preserving all selected outputs and checking every
 instruction. The incremental `step` function is also usable while editing. -/

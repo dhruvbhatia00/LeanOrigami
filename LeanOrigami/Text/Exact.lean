@@ -14,6 +14,11 @@ proof. Use `Artifact.writeLean` to replay it in a fresh Lean process.
 namespace LeanOrigami.Text
 open Hex
 
+/-- Shared finite budget for exported certificates and editor proof checking.
+The general trisection recipe exceeds the former four-million-heartbeat limit;
+both entry points must allow the same work, without relaxing proof checking. -/
+def certificateHeartbeats : Nat := 16000000
+
 -- Used both for conditional branches and final equations. Never fall back to
 -- evaluating canonical scalar arithmetic when transport was incomplete.
 private def decideCoordinates : Lean.Elab.Tactic.TacticM Unit := do
@@ -60,34 +65,52 @@ structure CertificateSource where
   acceptance : String
   conclusion : String
 
+/-- Serialize one exact scalar using the certificate's shared field table. -/
+def CoordinateTable.scalarSource (table : CoordinateTable) (a : Scalar) : Except String String := do
+  let some (_, saved) := table.entries.find? (fun entry => decide (entry.1 = a))
+    | throw "missing saved coordinate"
+  match saved with
+  | .rational q =>
+    if q.den == 1 then return s!"({q.num} : LeanOrigami.Scalar)"
+    return s!"(({q.num} : LeanOrigami.Scalar) / {q.den})"
+  | .coordinate i coeffs =>
+    return s!"({fieldName i}.scalar (Hex.PolyQuot.reduce _ _ ({repr coeffs})))"
+
+/-- A point keeps exact coordinates; display approximations never enter source. -/
+def CoordinateTable.pointSource (table : CoordinateTable) (point : Point Scalar) : Except String String := do
+  return s!"({← table.scalarSource point.1}, {← table.scalarSource point.2})"
+
+/-- Serialize normalized line coefficients and their normalization witness. -/
+def CoordinateTable.lineSource (table : CoordinateTable) (line : Line Scalar) : Except String String := do
+  if line.a == 1 then
+    return s!"⟨1, {← table.scalarSource line.b}, {← table.scalarSource line.c}, Or.inl rfl⟩"
+  unless line.a == 0 && line.b == 1 do throw "line is not normalized"
+  return s!"⟨0, 1, {← table.scalarSource line.c}, Or.inr ⟨rfl, rfl⟩⟩"
+
+/-- Serialize an object at either a public or a private recipe boundary. -/
+def CoordinateTable.objectSource (table : CoordinateTable) : Object Scalar → Except String String
+  | .point point => return s!".point ({← table.pointSource point})"
+  | .line line => return s!".line ({← table.lineSource line})"
+
+/-- Primitive instructions share one serializer across both saved formats. -/
+def CoordinateTable.instructionSource (table : CoordinateTable) : Instruction Scalar → Except String String
+  | .fold request line => return s!".fold ({repr request}) ({← table.lineSource line})"
+  | .intersect left right point =>
+    return s!".intersect ⟨{left.index}⟩ ⟨{right.index}⟩ ({← table.pointSource point})"
+
+/-- Declarations needed by every serialized coordinate in this table. -/
+def CoordinateTable.fieldSources (table : CoordinateTable) : List (String × String) :=
+  table.fields.toList.zipIdx |>.map fun (field, i) => (fieldName i, fieldSource field)
+
 private def certificate (table : CoordinateTable) (program : Program Scalar)
     (point : PointRef) (coordinate : Coordinate) (target : Scalar) : Except String CertificateSource := do
-  let scalar (a : Scalar) : Except String String := do
-    let some (_, saved) := table.entries.find? (fun entry => decide (entry.1 = a))
-      | throw "missing saved coordinate"
-    match saved with
-    | .rational q => return s!"(({q.num} : LeanOrigami.Scalar) / {q.den})"
-    | .coordinate i coeffs =>
-      return s!"({fieldName i}.scalar (Hex.PolyQuot.reduce _ _ ({repr coeffs})))"
-  let mut steps : List String := []
-  for instruction in program do
-    match instruction with
-    | .fold request l =>
-      let line ← if l.a == 1 then do
-          pure s!"⟨1, {← scalar l.b}, {← scalar l.c}, Or.inl rfl⟩"
-        else do
-          unless l.a == 0 && l.b == 1 do throw "line is not normalized"
-          pure s!"⟨0, 1, {← scalar l.c}, Or.inr ⟨rfl, rfl⟩⟩"
-      steps := s!".fold ({repr request}) ({line})" :: steps
-    | .intersect l r p =>
-      steps := s!".intersect ⟨{l.index}⟩ ⟨{r.index}⟩ ({← scalar p.1}, {← scalar p.2})" :: steps
-  let fields := table.fields.toList.zipIdx |>.map fun (field, i) =>
-    (fieldName i, fieldSource field)
+  let steps ← program.mapM table.instructionSource
+  let fields := table.fieldSources
   let coordinateSource := match coordinate with | .x => ".x" | .y => ".y"
   return {
     fields
-    program := "[\n  " ++ String.intercalate ",\n  " steps.reverse ++ "]"
-    target := ← scalar target
+    program := "[\n  " ++ String.intercalate ",\n  " steps ++ "]"
+    target := ← table.scalarSource target
     acceptance := s!"LeanOrigami.Program.accepts program ⟨{point.index}⟩ {coordinateSource} target = true"
     conclusion := s!"LeanOrigami.Program.accepts_sound LeanOrigami.Scalar.realHom program ⟨{point.index}⟩ {coordinateSource} target accepted"
   }
@@ -102,7 +125,7 @@ def CertificateSource.artifact (source : CertificateSource) : Artifact :=
   let declarations := source.fields.map fun (name, value) =>
     s!"def {name} : Scalar.Presentation := {value}\n\n"
   let text := "import LeanOrigami.Text.Exact\n\nopen LeanOrigami LeanOrigami.Text Hex\n" ++
-    "namespace SavedOrigami\nset_option maxRecDepth 8192\nset_option maxHeartbeats 4000000\nset_option exponentiation.threshold 8192\n\n" ++
+    s!"namespace SavedOrigami\nset_option maxRecDepth 8192\nset_option maxHeartbeats {certificateHeartbeats}\nset_option exponentiation.threshold 8192\n\n" ++
     String.join declarations ++
     s!"def program : Program Scalar := {source.program}\n\n" ++
     s!"def target : Scalar := {source.target}\n\n" ++
@@ -118,7 +141,7 @@ The continuation can return a proof or a persistent, editable construction. -/
 def CertificateSource.expression (source : CertificateSource) (finish : String) : String :=
   let declarations := source.fields.map fun (name, value) =>
     s!"  let {name} : LeanOrigami.Scalar.Presentation := {value}\n"
-  "set_option maxRecDepth 8192 in\nset_option maxHeartbeats 4000000 in\n" ++
+  s!"set_option maxRecDepth 8192 in\nset_option maxHeartbeats {certificateHeartbeats} in\n" ++
     "set_option exponentiation.threshold 8192 in\nopen LeanOrigami LeanOrigami.Text Hex in\nby\n" ++ String.join declarations ++
     s!"  let program : LeanOrigami.Program LeanOrigami.Scalar := {source.program}\n" ++
     s!"  let target : LeanOrigami.Scalar := {source.target}\n" ++

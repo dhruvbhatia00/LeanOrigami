@@ -781,7 +781,7 @@ persistent-editing, line-label, and concise-decimal revision is complete: builds
 Lean integration regressions, browser tests, proof replay, and the live editing
 cycle passed. Phase 6 is treated as complete in the approved work order.
 The broader repeat checks noted above remain release-validation follow-ups
-for Phase 8, not newly reported passes; see
+for Phase 9, not newly reported passes; see
 [`docs/phase-6.md`](docs/phase-6.md) for the recorded evidence.
 
 **History inspection revision:** hovering or keyboard-focusing a construction
@@ -972,7 +972,7 @@ history, current-input branch choices, and GUI-to-kernel replay are implemented.
 The focused tests and live save/reopen checks passed; see
 [the checkpoint audit](docs/phase-6-recipes.md) and
 [the recipe guide](docs/recipes.md). This does not close the older Phase 6
-release checks, which remain tracked for Phase 8. Phase 7 is the next work.
+release checks, which remain tracked for Phase 9. Phase 7 is the next work.
 
 **Approved extension (2026-10-12), completed before the new Phase 7.** Let users build outside
 a theorem, save a parameterized recipe, and invoke it from the proof widget.
@@ -1017,7 +1017,7 @@ this interface later. Standard arithmetic, roots, projections, and coordinate
 transfer recipes are the planned next library additions; start with midpoint
 to validate the complete workflow, reusing existing correctness results where
 applicable. Phase 7 now schedules these additions, conditions, branch policies,
-and proved library specifications; Phase 10 retains general symbolic-proof
+and proved library specifications; Phase 11 retains general symbolic-proof
 generation for user-authored programs.
 
 ### Phase 6S — GUI sample setup and recipe previews
@@ -1073,7 +1073,7 @@ editable and their recipes remain usable in proofs. Exploration makes no claim
 that a recipe works for every input. Continuous recomputation while dragging,
 automatic branch predicates, and symbolic correctness proofs were outside this
 checkpoint. Phase 7 now schedules exact branch policies and proved library
-contracts; general symbolic proof generation remains Phase 10.
+contracts; general symbolic proof generation remains Phase 11.
 
 ### Phase 7 — Recipe contracts, proved operations, and authoring guidance
 
@@ -1100,9 +1100,15 @@ still certify the expanded construction through the existing kernel checker.
 3. **Coordinates and roots (7.6–7.7; complete).** Projections, coordinate and
    distance transfer, square roots, and cube roots with their specifications.
 4. **Angles and integration (7.8–7.9; in progress).** Angle conditions, trisection,
-   complete integration checks, documentation, and the final phase audit.
+   complete integration checks, documentation, and its completion audit.
+5. **Theorem reuse and recipe efficiency (7.10; strategy recorded).** Prioritize
+   compositional certification of existing intuitive recipes using their proved
+   theorems. Address this bottleneck before further expensive checkpoint 4
+   validation. Implementation awaits agreement on the concrete interface.
 
-Complete and audit each checkpoint before proceeding. During checkpoints 1–3,
+The 2026-10-15 strategy revision brings checkpoint 5 design forward before
+closing checkpoint 4; existing results are retained, not declared complete.
+Otherwise complete and audit each checkpoint before proceeding. During checkpoints 1–3,
 keep validation light: use file-level LSP diagnostics, focused examples,
 targeted dependency builds, and selected live widget checks. Defer the broad
 integrated validation to checkpoint 4; do not repeatedly run the full suite.
@@ -1150,6 +1156,32 @@ and [the saved visual demo](LeanOrigamiDemos/Measurements.lean).
 Checkpoint 4 is now in progress. Continue through its angle semantics, general
 trisection, integration, and final phase audit before returning the completed
 Phase 7 result. The visual design follow-up remains deferred.
+
+**Checkpoint 4 progress (2026-10-15).** The exact 30°/45°/60° conditions
+and their Mathlib interpretations, general trisection geometry, primitive
+execution, branch policy, and widget contract are implemented. The theorem
+proves both unit-distance endpoints lie strictly inside the angle, in order,
+with three equal real angles. It covers clockwise and counterclockwise inputs,
+translation, rotation, and unequal input lengths. All root witnesses are
+constructed intermediates. Four named output objects are available in the GUI.
+
+Complete LSP diagnostics, targeted builds, the full library/test/demo build,
+and live GUI checks have passed. The maintained integration path has passed, including the final default saved
+trisection proof replay (confirmed 2026-10-15). Completion bookkeeping remains
+pending while the theorem-reuse strategy is reviewed. Key transitive
+axiom audits report only the ordinary Mathlib foundations. See
+[the checkpoint audit](docs/phase-7-angles.md) for validation and limitations.
+
+The 856 primitive instructions are an implementation cost of expanding
+coordinate arithmetic, not a mathematical requirement for trisection. Replay
+now uses direct reference reduction and kernel-checked 32-step proof batches
+to keep memory manageable. Export and widget checking share a finite
+sixteen-million-heartbeat budget. Certification still takes minutes.
+A direct geometric recipe (such as Abe's construction) should replace this
+expansion for visual use, preserving the general angle theorem and explicit
+branch guarantees. Hiding auxiliary objects alone does not address that cost.
+The approved Phase 8 UI work remains deferred until Phase 7, including the new
+checkpoint 5, is complete.
 
 #### 7.1 Button explanations and automatic sample names
 
@@ -1258,7 +1290,7 @@ single-output source format and kernel certification path.
 **Acceptance:** the interface accurately communicates what is proved, and
 branch-sensitive and multiple-output recipes share the existing execution and
 certification infrastructure. Universal proof generation for arbitrary
-GUI-authored recipes is not required here; that remains Phase 10.
+GUI-authored recipes is not required here; that remains Phase 11.
 
 #### 7.5 Arithmetic recipes and proofs
 
@@ -1358,6 +1390,12 @@ intersections. Prove that the selected cubic root is the cosine of one third
 of the original ray angle, and that these directions lie in order inside that
 angle with three equal gaps. The cubic identity by itself is not acceptance.
 Expose both output points and their lines through the vertex as named outputs.
+Retain references to the internally constructed lengths, cosine, and root
+witnesses for the exact output condition. They are intermediate results, never
+additional input seeds. The condition records their polynomial equations,
+strict branch bounds, and the two endpoint formulas with denominators cleared.
+Its geometric interpretation must imply the proved real trisection statement;
+only the four requested geometric outputs need public names in the widget.
 
 #### 7.9 Integration, demonstrations, and checkpoint audit
 
@@ -1383,76 +1421,359 @@ constructibility proofs remain replayable. Record actual validation, code-size
 and specification audits, performance observations, and remaining limitations;
 do not silently defer a listed recipe while marking the phase complete.
 
-### Phase 7U — Widget layout, navigation, and contextual help
+#### 7.10 Checkpoint 5 — Theorem reuse and recipe efficiency
 
-**Approved follow-up, 2026-10-14; deferred until Phase 7 is complete.** Finish
-checkpoints 3–4 first. Then make a contained design and documentation pass before
-Phase 8, without renumbering the remaining phases. Do not mix this redesign into
-the ongoing mathematical work or change the construction/proof checker.
+**Strategy revised 2026-10-15; documentation only for now.** Pause further
+expensive checkpoint 4 validation and first agree on a compositional recipe
+certificate interface. Preserve existing recipes and geometry proofs. The
+primary goal is to reuse their general theorems, including within nested recipes,
+rather than expand and certify every primitive step on each invocation.
+After demonstrating the interface on a small recipe, apply it to the existing
+families and trisection, then finish checkpoint 4 and the Phase 7 audit.
+Phase 8 follows this work; visual polish does not resolve certificate expansion.
 
-- **Canvas and toolbar:** keep the drawing prominent, with compact zoom,
-  Reset view, and Refine display controls beneath it. Explain controls on hover
-  and keyboard focus.
-- **Sample labels:** fix the mismatch between the label entered for a sample
-  point and the label rendered on the canvas. Use the author's chosen label
-  consistently for sample points and lines, including after edits, previewing
-  different samples, saving, and reopening. Rename the sample "Name" fields to
-  "Label" to make their purpose clear. Check this during the design pass, not
-  as part of the ongoing Phase 7 mathematical checkpoints.
-- **Canvas sample-line editing:** use two draggable point handles rather than
-  slope/intercept sliders, so vertical lines work naturally. In an explicit
-  "Add sample line" mode, two canvas clicks place the handles; selecting an
-  existing sample line reveals its handles for movement and rotation. Preview
-  the line while dragging. Snap handles to a visible rational grid and show
-  their exact coordinates, with editable coordinate fields for precise values.
-  Commit exact rational sample data on release; floating-point drawing values
-  are never proof evidence. Reject coincident handles with a clear message and
-  retain the previous valid line. Handles are editing controls, not extra
-  construction inputs. Preserve the line's label and references, mark dependent
-  previews stale, and rediscover branches under the changed samples. Provide
-  keyboard/field alternatives, distinguish editing from ordinary object
-  selection and panning, and test vertical lines, cancellation, saving/reopening,
-  and nested recipe previews. Apply this to sample inputs only; constructed
-  creases remain determined by their construction steps.
-- **Navigation:** organize controls into Construct (operation, ordered inputs,
-  preview/apply), History (steps and nested recipes, retaining input/output
-  highlighting), and Recipe settings (samples, requirements, named outputs).
-  Show Recipe settings only in recipe workspaces. Preserve drafts and exact
-  selections when switching tabs.
-- **Readable layout:** use headings, spacing, subtle card borders, and VS Code
-  theme colors. Support narrow InfoViews and both light and dark themes. Give
-  the next main action a strong button style; make secondary actions quieter.
-  Keep actions beside their relevant controls.
-- **Operation guides:** give each fold and recipe a short purpose description,
-  followed by labeled inputs (meaning and selection order), outputs (objects
-  and intended meaning), and validity requirements. For example, multiplication
-  takes signed x-axis points and an explicit coordinate frame, and produces
-  `(x × y, 0)`. Keep essential selection guidance visible.
-- **Contextual help:** add short hover/focus pop-ups or help icons for unfamiliar
-  terms and controls, with click-to-pin support for longer explanations.
-  Help must be accessible by keyboard, not depend solely on hovering.
-- **Status and errors:** use compact, distinct badges for requirements satisfied,
-  specification proved, and unsaved changes. Keep detailed equations expandable.
-  Place errors near the relevant controls with a useful correction when known.
-  Neither descriptive text nor sample checks should appear to establish a proof.
-- **Custom recipe documentation:** let authors enter a purpose description and
-  descriptions of inputs and named outputs. Persist these as optional,
-  backward-compatible metadata and display them when invoking the recipe.
-  Clearly separate author-written descriptions from proved specifications.
-  Preserve the existing rule that edits cannot leave a misleading proof badge;
-  audit how added descriptive metadata interacts with template recognition.
-- **Progressive detail:** collapse full object lists, generated source, and
-  detailed conditions by default while keeping them easy to find.
+**Intuitive constructions remain first-class.** A user should be able to reason
+in terms of midpoint, projection, arithmetic, roots, and other meaningful recipe
+calls. Minimizing primitive folds is not the sole design objective. Keep the
+visual construction available for inspection and editing, while allowing its
+proof to use compact theorem applications. Display history and proof structure
+need not be identical, but must describe the same exact objects and choices.
 
-**Implementation and acceptance:** primarily refactor the existing frontend;
-add only the small metadata support needed for saved recipe documentation.
-Avoid a parallel editor or duplicated state. Use focused browser checks and a
-short live walkthrough covering navigation, narrow layouts, theme compatibility,
-keyboard/hover help, custom-description save/reopen, and the existing
-construction/save/proof flows. Old saved recipes remain usable without new
-metadata. No mathematical changes or broad new test catalogue are required.
+- Audit the existing recipe theorems before adding new ones. A geometric output
+  property alone is insufficient: a reusable theorem must establish that its
+  output is obtainable by permitted constructions from the given inputs, under
+  explicit requirements and branch conditions. Derive such an interface from
+  existing execution and contract theorems where possible. Do not confuse
+  existential completion with correctness of an arbitrary selected output.
+- Certify a proved recipe call by applying its theorem to already certified
+  inputs and evidence of the requirements. Tie the widget's exact output to
+  the theorem's output through a shared definition or a small checked equality
+  or uniqueness certificate. Root intervals and other branch evidence remain
+  exact and explicit. The theorem application itself is checked by Lean's
+  kernel; its previously checked body need not be replayed at each call.
+- Make certification compositional: nested calls should reuse proved subrecipes
+  without re-expanding their execution proofs. Share previously constructed
+  objects and proofs where appropriate. Avoid definitional reduction that
+  accidentally unfolds the entire construction behind a recipe result.
+- Retain primitive reflection for new or edited constructions without an
+  applicable registered theorem. A soundness theorem for a reflective checker
+  does not make evaluating a large expanded certificate free. Editing a recipe
+  must invalidate an inapplicable theorem association; matching names or output
+  descriptions is never sufficient evidence.
+- Keep exact discovery, visual history, and certification separate. Theorem reuse
+  alone does not eliminate repeated root searches, constructing auxiliary
+  objects, or rendering them. Measure these costs separately and use the
+  measurements to decide where execution reuse or shorter constructions are
+  actually needed. Preserve editable history and independent saved-proof replay.
+- Begin with one small existing recipe to demonstrate the interface and compare
+  repeated/nested proof cost. Then apply the design to existing arithmetic,
+  coordinate, root, and angle recipes. Refactor the current certificate path
+  instead of adding a competing proof pipeline or recipe-specific wrappers.
+- Review each recipe for efficient direct axiomatic constructions as a secondary,
+  measured optimization. Research alternatives before implementing replacements.
+  In particular, investigate short geometric trisection if the existing 856-step
+  expansion remains expensive for discovery or visual use. Preserve its general
+  domain, clockwise/counterclockwise inputs, ordered interior rays, and exact
+  branch guarantees; do not silently narrow the specification to acute angles.
 
-### Phase 8 — Package the main theory and release
+##### Public outputs and private construction history
+
+**Agreed design, 2026-10-15.** Separate recipe inputs, public outputs, and the
+internal construction. When saving a recipe, provide an output-selection mode:
+select points and lines on the canvas, review their labels, and save the chosen
+output collection. Reuse the existing named-output representation where possible;
+do not introduce a competing selection or naming system.
+
+A recipe call exposes only its declared outputs to the surrounding construction
+and ordinary object menus. Later steps may refer to its inputs and public
+outputs, never hidden intermediates. An internal object needed by callers must
+be explicitly promoted to an output. Keep the internal recipe history saved
+for inspection and editing; hiding it must not destroy the visual explanation.
+Maintain a clear mapping from public output references to exact objects across
+save, reload, changed samples, and nested calls.
+
+Certify the output collection together, sharing assumptions and construction
+evidence rather than repeating a proof for every object. Keep constructibility,
+geometric meaning, and applicability/branch requirements distinct. Selecting
+outputs does not automatically establish a universal specification. Existing
+proved recipes attach their theorems; ordinary user-authored recipes retain
+primitive checking, with sample checks clearly distinguished from universal
+proofs. Editing the body or public interface must invalidate any theorem
+association that is no longer justified.
+
+The public interface is also an execution/proof boundary, not merely a display
+filter. A proved recipe should be able to return exact outputs with compact
+certification without reconstructing all auxiliary objects when unnecessary.
+Retain internal expansion for inspection or fallback, with costs recorded
+separately. General arbitrary recipe theorem synthesis is not promised here.
+
+##### Proposed next delivery target — checkpoint 5A
+
+**Complete 2026-10-15.** The approved shared refactor, midpoint demonstration,
+independent proof replay, compatibility checks, and live edit/save/reopen check
+passed. See [the checkpoint audit](docs/phase-7-composition.md). Only midpoint
+currently reuses a registered output theorem; other recipe migrations remain
+in checkpoint 5. The following records the accepted delivery scope.
+
+Deliver one complete example of a recipe
+with public outputs and theorem-based certification, using the existing midpoint
+recipe as the first candidate after inspecting its current API. Keep the work
+small enough to review before migrating the library.
+
+1. Audit the existing constructibility, recipe-contract, named-output, and saved
+   proof APIs. Define the smallest reusable interface that supports a theorem
+   about all outputs, its requirements, and their exact identity. Reuse existing
+   proofs; refactor unsuitable boundaries instead of adding a parallel pipeline.
+2. Adapt midpoint to return its public point and certify it by a general theorem
+   applied to certified inputs. Its theorem must prove both constructibility
+   from the available inputs and midpoint meaning. Internal folds must not be
+   replayed for every certified call.
+3. Demonstrate composition: construct a midpoint, use that public result in a
+   second midpoint call, and then in an ordinary primitive construction. Confirm
+   reference handling and that hidden intermediate objects are not available
+   as caller inputs. Save and independently replay the resulting proof.
+4. Integrate a minimal widget demonstration using existing named-output controls:
+   only public outputs appear in the caller's scene/object menus; the internal
+   construction remains inspectable. Preserve source/edit history. The polished
+   canvas selection flow and broad UI redesign can follow; explicitly report
+   any selection interaction not included in this first slice.
+5. Include a focused regression for an edited recipe losing its proved-theorem
+   association and retaining the primitive-checking route. Test the midpoint
+   domain actually advertised, including coincident inputs if supported; do not
+   silently change its assumptions to simplify the demonstration.
+6. Compare primitive expansion and theorem reuse on the same small nested
+   example. Report exported proof structure/size and discovery, export, and
+   kernel-check time separately, separating cold imports from proof work where
+   practical. Inspect the proof to establish reuse, not just faster timing.
+
+**Return when:** the small end-to-end example, focused LSP checks, relevant live
+widget check, independent saved-proof replay, and transitive axiom audit pass;
+report the interface, measured outcome, and remaining migration work. No full
+suite, mass recipe migration, trisection rewrite, or Phase 8 design pass in this
+slice. If the audit reveals that this requires a substantial redesign, return
+with that concrete finding before undertaking it. Checkpoint 5A completion does
+not imply checkpoint 4 or the rest of checkpoint 5 is complete.
+
+##### Checkpoint 5A initial audit — representation change identified
+
+**2026-10-15: audit completed; proposed refactor subsequently approved.** The agreed early
+report condition applies: the small end-to-end slice requires a shared
+representation refactor. Do not implement midpoint-only exceptions to conceal it.
+
+Concrete findings:
+
+- `Construction/Program.lean` permits only folds/intersections, each adding one
+  object. `Construction/Recipe.lean` expands every nested call into that list.
+- `Widget/Recipe.lean` retains recipe groups as presentation spans, not executable
+  calls. Its midpoint template contains three primitives and rejects coincident
+  inputs; no standalone midpoint output-constructibility theorem was found in
+  the production API. Existing general recipe contracts describe completions of
+  the expanded primitive list, not a compositional output certificate.
+- `Widget/Session.lean` appends all intermediates to one public object list.
+  Discovery, checks, undo, saved templates, and group offsets use primitive-step
+  counts. Filtering the canvas alone would leave hidden objects addressable.
+- `Text/Exact.lean` prepares coordinate evidence for the whole primitive program.
+  `Widget/Saved.lean` requires `Program.accepts = true` for that program and reopens
+  it by primitive execution. Merely adding a midpoint theorem would not make
+  these paths consume it or avoid expansion.
+- The underlying `Constructible` definition already supports theorem composition;
+  it needs no new trusted rule or weakening. Keep this mathematical foundation
+  and the primitive checker.
+
+**Recommended interface decision before continuing:** retain recipe calls as
+nodes in the saved/editable construction, alongside primitive nodes. A call
+records an exact recipe definition/version, public input references, and selected
+public outputs/branch information. Keep internal history scoped inside the call.
+Use a shared proof interface that certifies the exact public output collection
+from certified inputs. Registered proved recipes supply theorem applications;
+unproved/edited recipes supply evidence from their internal primitive execution.
+Both establish the same constructibility claim, rather than separate notions of
+valid proof. Do not trust display metadata or a recipe name as theorem evidence.
+
+Public reference allocation follows each node's output count, not its internal
+primitive count. Refactor session execution, undo, serialization, and saved proof
+reopening around that model. Preserve loading of existing primitive-only saved
+constructions; never silently reinterpret their old indices. Exact output
+identity and branch conditions must remain checked. Preserve a distinction
+between a recipe's untrusted display reconstruction and certified outputs.
+
+Suggested implementation order once this interface is agreed: first the shared
+node/output certificate model with a small non-GUI nested-midpoint example;
+then migrate the existing session/export/saved path for the same example and do
+the focused live check. This is the same end-to-end goal, but its foundation is
+larger than a recipe-local change. No performance improvement is claimed yet.
+
+The already-running checkpoint 4 default trisection export replay has now
+finished with exit status 0 and reports only `propext`, `Classical.choice`, and
+`Quot.sound`. No additional expensive validation was started during this audit.
+This passing result does not complete checkpoint 5A or the pending checkpoint 4
+handoff/audit bookkeeping.
+
+**Acceptance to make concrete before implementation:** agree on the theorem
+interface and representative benchmarks; demonstrate compact certification of
+nested existing recipes without primitive rechecking; retain exact output and
+constructibility guarantees, edited-recipe fallback, visual history, and saved
+replay. Record discovery/export/kernel/display costs separately and document
+remaining limitations. Use focused LSP and small regressions during development,
+then run affected integration checks once at the stable checkpoint. Implementation of the shared refactor and the checkpoint 5A demonstration was
+subsequently authorized on 2026-10-15. Other recipe migrations remain later work.
+
+### Phase 8 — Visual interaction, navigation, and documentation
+
+**Approved 2026-10-14.** This expands and replaces the former Phase 7U design
+pass. Complete Phase 7 checkpoints 4 and 5 first. Release packaging and the later
+mathematical phases move to phases 9–11. Keep this UI work separate from the
+ongoing angle/trisection implementation.
+
+#### Design principles
+
+1. The picture is the primary workspace: select, inspect, discover operations,
+   and choose folds on the canvas.
+2. Show the next useful action; keep essential guidance visible and reveal
+   advanced controls progressively.
+3. Explain mathematical purpose in familiar language before equations or
+   implementation details.
+4. Use sensible defaults with explicit overrides; keep meaningful mathematical
+   choices visible.
+5. Connect explanations to geometry through object highlighting.
+6. Make exploration reversible and distinguish previews from committed steps.
+7. Distinguish sample checks, proved recipe guarantees, and completed proofs.
+8. Provide keyboard and ordinary-control alternatives to canvas gestures.
+
+#### 8.1 Canvas clarity and navigation
+
+- Render point and line labels in a separate layer above all geometry, with
+  subtle contrast backgrounds/outlines and collision reduction where practical.
+- Use user-chosen labels consistently in canvas, selectors, history, and
+  specifications, including after sample edits, saving, and reopening. Rename
+  sample Name fields to Label; generate editable default labels.
+- Retain the coordinate grid, marked axes, concise rounded coordinate/equation
+  tooltips, and generous hit targets. Make selectable objects react visibly.
+- Distinguish existing objects, selected inputs, candidate folds, and outputs
+  by styles/markers as well as color.
+- Keep scrolling and zooming separate: ordinary scrolling scrolls the Infoview;
+  explicit controls or a modified gesture zoom the canvas.
+- Keep the drawing prominent. Organize controls into Construct, History, and
+  Recipe settings (the latter only in recipe workspaces). Preserve drafts and
+  exact selections across navigation.
+- Use headings, spacing, subtle borders, theme colors, narrow-layout support,
+  and restrained secondary buttons. Place the main next action prominently.
+  Collapse full object inventories, generated source, and technical details.
+
+#### 8.2 Recipe inputs and readable explanations
+
+Automatically bind the standard coordinate frame from available exact objects;
+put its five roles in collapsed Coordinate frame settings. If frame objects
+are missing, obtain them through legal construction steps, never new proof
+seeds. Current recipes require the standard frame: an override may select
+valid existing representatives, but arbitrary rotated/rescaled frames require
+additional mathematical support and must not be advertised prematurely.
+
+Ordinary operand forms:
+
+| Family | Inputs shown by default |
+| --- | --- |
+| Addition, subtraction, multiplication, division | Two scalar points |
+| Negation, reciprocal, square/cube root | One scalar point |
+| Axis projection | One point and destination axis |
+| Coordinate transfer | One point and transfer direction |
+| Distance on an axis | Two points and destination axis |
+| Midpoint | Two points |
+| Angle trisection | Vertex and two ray points |
+
+Use role names such as Dividend, Divisor, Vertex, and Moving point. Activating
+an input highlights eligible canvas objects and explains the next selection.
+Review every built-in recipe for avoidable repeated setup and misleading input
+names, without weakening its mathematical requirements.
+
+Present structured requirements and guarantees in natural language first:
+“The result lies on the x-axis”, “The divisor must be nonzero”, “The result is
+the nonnegative square root of the input”, and “The three ray points must not
+lie on one line”. Hovering/focusing object mentions highlights their geometry.
+Provide expandable Exact statement details. Generate prose from structured
+conditions where possible; retain an honest mathematical fallback for unusual
+conditions. Do not substitute unverified prose for the checked statement.
+
+Show distinct statuses for requirements met for these samples, recipe guarantee
+proved, and construction proof checked. Keep author-written documentation
+separate from proved guarantees. Preserve proof-badge invalidation on edits.
+
+Recipes have a purpose, input descriptions, named output descriptions, and
+requirements. Let custom authors save these as optional backward-compatible
+metadata. Audit metadata's interaction with template recognition. Provide
+hover/focus help, click-to-pin longer explanations, and keyboard access.
+Explain Reset view (restore camera) versus Refine display (improve drawing
+approximations, without changing exact objects or proving more).
+
+#### 8.3 Construction directly on the canvas
+
+Near a crossing of existing lines, show a temporary intersection marker.
+Clicking offers Add intersection; select the exact pair of lines and compute
+the exact result, never use the pointer coordinate as evidence. Handle parallel,
+coincident, overlapping, and already-added cases clearly.
+
+Selected objects reveal contextual actions. Keep a searchable operation menu
+and keyboard alternatives. Show descriptive names first and axiom numbers
+second. Use guided role selection rather than ambiguous gestures:
+
+| Axiom | Canvas action |
+| --- | --- |
+| A1 | Two points → Fold through both |
+| A2 | Two points → Bring points together |
+| A3 | Two lines → Bring lines together |
+| A4 | Point and line → Perpendicular through point |
+| A5 | Moving point and target line, then fixed point on crease |
+| A6 | Two point-to-line pairs, with arrows showing the pairing |
+| A7 | Moving point and target line, then perpendicular-reference line |
+
+Draw available creases as distinguishable previews. Hover highlights/explains,
+click selects, and a nearby Apply fold commits. Synchronize a compact list for
+keyboard access and overlapping choices. Offer a small chooser when hits are
+ambiguous. Explain no-solution/degenerate cases near the affected inputs.
+
+#### 8.4 Samples, history, and recovery
+
+Add sample points by clicking or exact coordinate entry. Create sample lines
+with two clicks and edit with two draggable handles, including vertical lines.
+Snap to a visible rational grid and show exact committed values; commit rational
+sample data on release, never floating-point proof evidence. Handles are editor
+controls, not extra construction inputs. Reject coincident handles without
+losing the previous valid line. Preserve labels/references, distinguish editing
+from selection/panning, support cancellation and keyboard/field alternatives,
+and rediscover branches after changed samples. Constructed objects cannot be
+freely dragged in a way that silently changes their proof.
+
+Retain history-hover highlighting and allow pinning a selected step. Present
+recipes as expandable named groups and connect history/canvas selection both
+ways. Large recipes can contain hundreds of auxiliary objects: provide group
+visibility controls that focus on inputs and named outputs, while revealing
+the relevant intermediate geometry when inspecting a primitive step. Hiding
+objects changes only the display, never the saved construction or proof.
+Provide undo/cancel and warn before invalidating dependent steps. Keep
+saved constructions visually viewable/editable after proof completion.
+
+Show useful progress during long computations, prevent duplicate submissions,
+and preserve work after errors. Place plain-language errors by affected inputs
+with corrections where known. Clearly identify stale previews after edits.
+
+#### Implementation order and acceptance
+
+Implement canvas/layout/labels first, then simpler inputs and readable
+explanations, then contextual construction and canvas fold selection, and
+finally sample editing and interaction polish. Refactor the existing frontend
+and shared state; do not create a parallel editor. Keep exact checking and
+construction provenance intact. Add only necessary metadata/backend support.
+
+Use focused automated interaction checks and live walkthroughs: all seven
+axioms, exact intersection addition, overlapping candidate selection, default
+frame binding/missing-frame construction, readable conditions and linked
+highlights, sample editing, undo, saved proof replay, custom documentation
+save/reopen, old recipes without new metadata, keyboard access, narrow layouts,
+and both themes. Check label layering and user labels explicitly. Record actual
+checks and remaining limitations; no broad new mathematical test catalogue is
+required solely for this redesign.
+
+### Phase 9 — Package the main theory and release
 
 Package the arithmetic results as a subfield of `ℝ`, and expose clean
 square-root and cubic-root closure theorems. Prove all constructible
@@ -1470,7 +1791,7 @@ known limitations are recorded. Excluding tests from default targets cannot
 hide failures. No `sorry`, unproved project axiom, or native-execution trust
 shortcut occurs in certification.
 
-### Phase 9 — Real extension-tower characterization (later)
+### Phase 10 — Real extension-tower characterization (later)
 
 State the precise equivalence: a real number is origami-constructible iff it
 belongs to the last field of a finite tower of subfields of `ℝ`, beginning
@@ -1488,7 +1809,7 @@ including the combination of fields from different prior branches.
 quadratic and cubic towers and derive a nonconstructibility example such as
 the real fifth root of 2. Audit both directions and all embedding hypotheses.
 
-### Phase 10 — Symbolic construction programs (stretch)
+### Phase 11 — Symbolic construction programs (stretch)
 
 Extend reusable programs with symbolic inputs and explicit hypotheses.
 Interpret operations as generating proof obligations for validity,
@@ -1522,11 +1843,16 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phase 6, including 6R and 6S, is complete in the approved work
-order (2026-10-13). Phase 7 checkpoint 1 is complete; release packaging is
-Phase 8, followed by the extension-tower and symbolic phases 9 and 10.
-See [the sample-editor audit](docs/phase-6-samples.md) for the latest validation.
-Previously deferred expanded checks remain recorded as deferred, not passing.
+Current status: Phase 6, including 6R and 6S, is complete. Phase 7 checkpoints
+1–3 are complete; checkpoint 4's implementation and integration checks passed
+(see [the angle audit](docs/phase-7-angles.md)), with its performance limitations
+retained for checkpoint 5. Checkpoint 5A is complete: scoped public-output calls,
+midpoint theorem reuse, persistent editing, and focused live/kernel checks passed
+(see [the composition audit](docs/phase-7-composition.md)). Broader theorem
+migration, trisection performance work, and the final Phase 7 audit remain open.
+Phase 8 is the approved UI work, Phase 9 is release packaging, and phases 10–11
+cover extension towers and symbolic programs. Previously deferred checks remain
+recorded as deferred, not passing.
 
 Phase 5 is complete (2026-10-09), including the shared-program
 repair; see [the audit](docs/phase-5.md).
@@ -1618,7 +1944,7 @@ Generalization must produce a symbolic statement and a proof for arbitrary
 inputs satisfying those hypotheses; checking sampled positions is not proof.
 Expose changes in validity, degeneracies, and branch choices rather than
 silently assuming the concrete construction works everywhere. This would
-provide a visual interface to the symbolic-program work described in Phase 10,
+provide a visual interface to the symbolic-program work described in Phase 11,
 without expanding that phase's current commitments.
 
 ### Further directions to explore

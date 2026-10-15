@@ -161,7 +161,8 @@ private theorem resolve_available (f : K →+* ℝ) {state : State K}
     repeat' apply And.intro
     all_goals first | exact hp (by assumption) | exact hl (by assumption)
 
-private theorem step_sound (f : K →+* ℝ) {state : State K}
+/-- A checked primitive preserves constructibility from any certified input state. -/
+theorem step_sound (f : K →+* ℝ) {state : State K}
     (constructed : ∀ o ∈ state, Constructible (o.map f))
     {instruction : Instruction K} {result : Object K} (h : step state instruction = .ok result) :
     Constructible (result.map f) := by
@@ -195,7 +196,9 @@ private theorem step_sound (f : K →+* ℝ) {state : State K}
               (constructed _ (line_mem hm)) (solution.property f)
           · cases h
 
-private theorem execute_sound (f : K →+* ℝ) {state : State K}
+/-- Primitive execution can be reused inside a recipe with already constructed
+inputs; the inputs need not be the two original seeds. -/
+theorem execute_sound (f : K →+* ℝ) {state : State K}
     (constructed : ∀ o ∈ state, Constructible (o.map f)) (program : Program K) (final : State K)
     (h : execute state program = .ok final) : ∀ o ∈ final, Constructible (o.map f) := by
   induction program generalizing state with

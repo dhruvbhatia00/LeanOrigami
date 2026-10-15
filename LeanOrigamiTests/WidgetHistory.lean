@@ -18,13 +18,16 @@ example (crease : Line Scalar) :
     #[#[0, 1], #[1, 0], #[2, 3], #[1, 2], #[1, 0, 3], #[0, 1, 2, 3], #[1, 2, 3]] := by
   simp [historyStep]
 
-/-- The third instruction produces object 4; intersections highlight both lines. -/
-example (crease : Line Scalar) :
-    let session : Session := { program := [
-      .fold (.axiom1 ⟨0⟩ ⟨1⟩) crease, .fold (.axiom2 ⟨0⟩ ⟨1⟩) crease,
-      .intersect ⟨2⟩ ⟨3⟩ (0, 0)] }
-    ((session.view 32).history.map (·.output) = #[2, 3, 4]) ∧
-      ((session.view 32).history.map (·.inputs) = #[#[0, 1], #[0, 1], #[2, 3]]) := by
-  simp [Session.view, historyStep, Program.initial]
+-- The view follows a runtime cursor through nested scopes. This is a UI
+-- behavior check, not mathematical proof evidence.
+#eval show IO Unit from do
+  let crease : Line Scalar := Line.horizontal 0
+  let session : Session := { program := Execution.ofProgram [
+    .fold (.axiom1 ⟨0⟩ ⟨1⟩) crease, .fold (.axiom2 ⟨0⟩ ⟨1⟩) crease,
+    .intersect ⟨2⟩ ⟨3⟩ (0,0)] }
+  let history := (session.view 32).history
+  unless history.map (·.output) == #[2,3,4] &&
+      history.map (·.inputs) == #[#[0,1], #[0,1], #[2,3]] do
+    throw (IO.userError "History references changed")
 
 end LeanOrigamiTests.WidgetHistory

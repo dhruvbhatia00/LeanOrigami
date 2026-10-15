@@ -37,13 +37,9 @@ private def basis : IO Session := do
 
 private def saveProof (name goal : String) (session : Session) (point : Nat)
     (coordinate : Coordinate) : IO String := do
-  let target ← get (session.selected point coordinate)
-  let certificate ← get (← Text.prepareExact session.program ⟨point⟩ coordinate target)
-  let saved := savedSource certificate point coordinate
+  let saved ← get (← prepareComposition session point coordinate)
   IO.println s!"PASS: {name}, {session.program.length} exact editing steps; proof prepared"
-  let standalone := if name == "half" then
-      certificate.artifact.source.replace "import LeanOrigami.Text.Exact\n" "" else ""
-  return standalone ++ s!"theorem {name} : LeanOrigami.ConstructibleNumber ({goal}) := by\n  origami saved ({saved.replace "\n" "\n  "})\n#print axioms {name}\n\n"
+  return s!"theorem {name} : LeanOrigami.ConstructibleNumber ({goal}) := by\n  origami composed ({saved.replace "\n" "\n  "})\n#print axioms {name}\n\n"
 
 /-- Focused runtime checks plus rational, square-root, and cube-root proof files. -/
 def run : IO Unit := do

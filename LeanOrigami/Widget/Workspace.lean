@@ -1,6 +1,7 @@
 import LeanOrigami.Widget.Session
 import LeanOrigami.Widget.Arithmetic
 import LeanOrigami.Widget.Measurements
+import LeanOrigami.Widget.Trisection
 import Lean
 
 /-!
@@ -76,6 +77,7 @@ def recipeLibrary : MetaM (Array NamedRecipe) := do
   for op in [MeasurementOperation.projectX, .projectY, .transferX, .transferY,
       .distanceX, .distanceY, .sqrt, .cbrt] do
     library := library.push ⟨s!"recipe:measurement:{repr op}", op.name, measurementTemplate op⟩
+  library := library.push ⟨"recipe:trisection", "Trisect an angle", trisectionTemplate⟩
   let env ← getEnv
   let mut names := (recipeAttribute.ext.getState env).toArray
   for i in [:env.header.moduleNames.size] do
@@ -94,7 +96,9 @@ def recipeLibrary : MetaM (Array NamedRecipe) := do
 /-- Recognize proved built-ins by their complete saved template, including all
 requirements and branch checks. Edited templates lose the association. -/
 def librarySpecification (recipe : RecipeTemplate) : Option String :=
-  (arithmeticSpecification recipe).orElse fun _ => measurementSpecification recipe
+  if Execution.isMidpoint recipe then some "The output is the midpoint of the two distinct input points." else
+  (arithmeticSpecification recipe).orElse fun _ =>
+    (measurementSpecification recipe).orElse fun _ => trisectionSpecification recipe
 
 /-- Editable rational replacements. `keep` retains the server's exact object,
 including algebraic values that have no rational input representation. -/
@@ -202,10 +206,38 @@ def WorkspaceState.editRequirement (state : WorkspaceState) (session : Session) 
   let _ ← recipe.validate
   state.replay recipe
 
+-- Requirements keep local indices inside calls. Display their statuses without
+-- copying them into the caller or exposing private objects as public references.
+private partial def nestedRequirementViews (session : Session) : Array RequirementView := Id.run do
+  let describe (name : String) (recipe : RecipeTemplate) (inner : Session) : Array RequirementView :=
+    let label (i : Nat) := (recipe.parameters[i]?.map (·.name)).getD s!"object {i}"
+    let status (condition : Condition) (objects : Program.State Scalar) :=
+      if condition.checkObjects objects then "Satisfied" else "Not satisfied"
+    recipe.requirements.map (fun condition =>
+      ⟨name ++ ": " ++ conditionDescription label condition, status condition inner.seeds⟩) ++
+    recipe.checks.map (fun check =>
+      ⟨name ++ ": " ++ conditionDescription label check.condition,
+        if check.before > inner.program.length then "Not reached"
+        else status check.condition inner.objects⟩)
+  let mut views := #[]
+  for step in session.program do
+    if let Execution.Step.call name recipe arguments _ body := step then
+      if let .ok inputs := Composition.select session.objects arguments.toList then
+        if let .ok objects := Execution.replay inputs body then
+          let inner : Session := { seeds := inputs, objects, program := body }
+          views := views ++ describe name recipe inner ++ nestedRequirementViews inner
+  if let some cursor := session.running then
+    if !cursor.name.isEmpty then views := views ++ describe cursor.name cursor.recipe cursor.inner
+    views := views ++ nestedRequirementViews cursor.inner
+  return views
+
 /-- Exact statuses for the applied samples. Later inherited checks remain
 pending until their referenced construction objects have been produced. -/
 def WorkspaceState.requirementViews (state : WorkspaceState) (session : Session) :
     Array RequirementView × Array RequirementView := Id.run do
+  let session := match session.running with
+    | some cursor => if cursor.name.isEmpty then cursor.inner else session
+    | none => session
   let recipe := if state.replaying then state.template else none
   let requirements := recipe.map (·.requirements) |>.getD session.requirements
   let checks := recipe.map (·.checks) |>.getD session.checks
@@ -215,7 +247,8 @@ def WorkspaceState.requirementViews (state : WorkspaceState) (session : Session)
   return (requirements.map (fun condition =>
     ⟨conditionDescription name condition, status condition session.seeds⟩),
     checks.map (fun check => ⟨conditionDescription name check.condition,
-      if check.before > session.program.length then "Not reached" else status check.condition session.objects⟩))
+      if check.before > session.program.length then "Not reached" else status check.condition session.objects⟩) ++
+      nestedRequirementViews session)
 
 /-- Apply rational replacements, preserving untouched exact inputs. Parameter
 identity is fixed after setup; arbitrary samples never become proof seeds. -/

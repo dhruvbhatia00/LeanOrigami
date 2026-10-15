@@ -416,6 +416,21 @@ requests.shift().resolve({ ...grouped, workspace }); await flush();
 assert.ok(!button('Prepare recipe').props.disabled);
 console.log('PASS: requirement form, exact-check failure display, and removal while replay is blocked');
 
+// Angle forms submit exact named choices and distinguish lines from rays.
+selectRequirement('Requirement family').props.onChange({ target: { value: 'lineAngle' } }); render();
+assert.equal(selectRequirement('Requirement angle').props.value, '45');
+assert.deepEqual(selectRequirement('Requirement angle').children.map(n => n.props.value), ['30', '45', '60']);
+assert.equal(selectRequirement('Requirement input 3'), undefined);
+selectRequirement('Requirement family').props.onChange({ target: { value: 'rayAngle' } }); render();
+assert.ok(selectRequirement('Requirement input 3'));
+assert.ok(walk(tree).some(n => n.tag === 'small' && String(n.children).includes('Point 1 is the vertex')));
+selectRequirement('Requirement angle').props.onChange({ target: { value: '30' } }); render();
+assert.equal(selectRequirement('Requirement angle').props.value, '30');
+selectRequirement('Requirement family').props.onChange({ target: { value: 'coordinateEq' } }); render();
+assert.equal(selectRequirement('Requirement coordinate').props.value, 'x');
+assert.equal(selectRequirement('Requirement angle'), undefined);
+console.log('PASS: exact angle choices, ray vertex help, and switching requirement forms');
+
 // Named results remain ordinary object references, and can be removed separately.
 input('Output name').props.onChange({ target: { value: 'Midpoint' } }); render();
 button('Name this output').props.onClick(); render();
@@ -454,3 +469,35 @@ namedGroup.props.onMouseMove(); render();
 assert.equal(drawn(3).props['data-history-role'], 'output');
 assert.equal(drawn(4).props['data-history-role'], 'output');
 console.log('PASS: stale output badge prevention and highlighting every named group result');
+
+// Retained calls expose only public outputs; inspection is a separate read-only view.
+panelProps = { workspace: false, recipes: [] };
+gate = 'scoped-call'; render();
+const scoped = { ...start, session: { p: 'public-call' }, point: 2, coordinate: 'x', view: {
+  objects: [...start.view.objects, point(2, 0.5, 0)], choices: [], steps: 1,
+  history: [{ description: 'Recipe: Midpoint', inputs: [0, 1], output: 2 }],
+  groups: [{ name: 'Midpoint', start: 0, count: 1, inputs: [0, 1], output: 2,
+    outputs: [{ name: 'Result', index: 2 }] }] } };
+requests.shift().resolve(scoped); await flush();
+assert.equal(scoped.view.objects.length, 3);
+button('Inspect Midpoint').props.onClick(); render();
+const inspectCall = requests.shift();
+assert.equal(inspectCall.params.action, 'inspect');
+assert.equal(inspectCall.params.choice, 0);
+inspectCall.resolve({ ...scoped, inspectionPath: [0], view: { ...scoped.view, inspecting: true } }); await flush();
+button('Inspect Midpoint').props.onClick(); render();
+const innerInspect = requests.shift();
+assert.deepEqual(plain(innerInspect.params.inputs), [0]);
+assert.equal(innerInspect.params.choice, 0);
+innerInspect.resolve({ ...scoped, inspectionPath: [0, 0], view: { ...grouped.view, inspecting: true } }); await flush();
+assert.ok(button('Return to construction'));
+assert.ok(!walk(tree).some(n => n.tag === 'button' && n.children.includes('Submit')));
+assert.equal(button('Undo').props.disabled, true);
+button('Return to construction').props.onClick(); render();
+const back = requests.shift();
+assert.equal(back.params.action, 'render');
+assert.equal(back.params.session.p, 'public-call');
+back.resolve(scoped); await flush();
+assert.ok(button('Submit'));
+assert.equal(walk(tree).find(n => n.tag === 'select' && n.props['aria-label'] === 'Final point').props.value, 2);
+console.log('PASS: private call inspection, read-only controls, and return to unchanged public state');

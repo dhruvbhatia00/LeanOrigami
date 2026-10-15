@@ -1,5 +1,7 @@
+import LeanOrigamiDemos.ComposedRecipes
 import LeanOrigamiDemos.ArithmeticRecipes
 import LeanOrigamiDemos.Measurements
+import LeanOrigamiDemos.Trisection
 import LeanOrigamiDemos.Requirements
 import LeanOrigamiDemos.Recipes
 import LeanOrigamiDemos.RecipeSetup

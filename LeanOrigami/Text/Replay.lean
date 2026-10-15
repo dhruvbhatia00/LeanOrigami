@@ -38,11 +38,11 @@ private partial def listElements (value : Expr) : MetaM (List Expr) := do
 -- program only at its head duplicates earlier states. Skip scalar values,
 -- geometry, types, and proofs: this pass evaluates structure, not Hex arithmetic.
 private def normalizeStructure (scalar value : Expr) : MetaM Expr :=
-  Prod.fst <$> Meta.transformWithCache value {} (skipInstances := true)
+  Prod.fst <$> Meta.transformWithCache value {} (skipInstances := true) (skipConstInApp := true)
     (pre := fun e => do
       if ← isType e then return .done e
       let type ← whnf (← inferType e)
-      if type.isForall || type == scalar || type.isAppOf ``Line ||
+      if type == scalar || type.isAppOf ``Line ||
           (type.isAppOf ``Prod && type.getAppArgs[0]! == scalar) || (← isProp type) then
         return .done e
       return .continue)
@@ -50,17 +50,36 @@ private def normalizeStructure (scalar value : Expr) : MetaM Expr :=
       let result ← whnf e
       return if result == e then .done e else .visit result)
 
--- Reduce only reference-list structure; unification alone can repeatedly expand
--- nested recipe expressions. Algebraic choices remain symbolic.
-private def checkReferences : TacticM Unit := do
-  evalTactic (← `(tactic|
-    (simp only [Program.resolve, Program.point, Program.line, Program.initial,
-      Bind.bind, Except.bind, Pure.pure, Except.pure, List.cons_append, List.nil_append,
-      List.getElem?_cons_zero, List.getElem?_cons_succ]
-     try rfl)))
+/-- Normalize a named recipe builder throughout the goal, including output
+references and the claimed final state. Scalar values and geometry stay opaque;
+the kernel checks the resulting definitional conversion. -/
+syntax (name := normalizeRecipe) "origami_normalize " ident : tactic
+
+@[tactic normalizeRecipe] def elaborateNormalizeRecipe : Tactic := fun stx => do
+  let `(tactic| origami_normalize $builder:ident) := stx | throwUnsupportedSyntax
+  let name ← realizeGlobalConstNoOverloadWithInfo builder
+  withMainContext do
+    let goal ← getMainGoal
+    let target ← Meta.transform (← goal.getType) (pre := fun e => do
+      if !e.isAppOf name then return .continue
+      let args := e.getAppArgs
+      if args.isEmpty then throwError "expected a recipe builder with a scalar type argument"
+      return .done (← normalizeStructure args[0]! e))
+      (post := fun e => pure (.done e.consumeMData))
+    replaceMainGoal [← goal.replaceTargetDefEq target]
+
+-- Reduce the lookup itself, without simplifying every geometric object in the
+-- state. A resolved constructor can then instantiate the expected input directly.
+private def checkReferences : TacticM Unit := withMainContext do
+  let goal ← getMainGoal
+  let some (_, lhs, rhs) := (← goal.getType).consumeMData.eq?
+    | throwError "expected reference-resolution equality"
+  let result ← whnf lhs
+  replaceMainGoal [← goal.replaceTargetDefEq (← mkEq result rhs)]
+  evalTactic (← `(tactic| rfl))
 
 private def checkStep (geometry : TSyntax ``Parser.Tactic.tacticSeq) : TacticM Unit := do
-  let some (_, lhs, _) := (← (← getMainGoal).getType).eq?
+  let some (_, lhs, _) := (← (← getMainGoal).getType).consumeMData.eq?
     | throwError "expected instruction equality"
   let instruction ← withMainContext <| whnf lhs.getAppArgs.back!
   if instruction.isAppOf ``Instruction.fold then
@@ -77,6 +96,14 @@ private def checkStep (geometry : TSyntax ``Parser.Tactic.tacticSeq) : TacticM U
       (MessageData.joinSep (remaining.map MessageData.ofGoal) m!"\n")).toString
     throwError "could not certify the saved choice:\n{details}"
 
+/-- Certify one saved primitive choice using the same checker as a full program.
+Compositional certificates use this at primitive nodes and fallback leaves. -/
+syntax (name := origamiStep) "origami_step" (" using " tacticSeq)? : tactic
+
+@[tactic origamiStep] def elaborateStep : Tactic := fun stx => do
+  let `(tactic| origami_step $[using $geometry:tacticSeq]?) := stx | throwUnsupportedSyntax
+  focusAndDone (checkStep (geometry.getD (← `(tacticSeq| origami_geometry))))
+
 -- Flatten only the runtime object list. Keeping an ever-growing nest of
 -- append expressions makes each later lookup repeat work done by earlier ones.
 private def normalizeState (state : Expr) : MetaM Expr := do
@@ -85,9 +112,17 @@ private def normalizeState (state : Expr) : MetaM Expr := do
   mkListLit type.getAppArgs.back! objects
 
 private partial def checkExecution (geometry : TSyntax ``Parser.Tactic.tacticSeq) (index : Nat) : TacticM Unit := do
-  let goal ← getMainGoal
+  let original ← getMainGoal
+  -- Name bounded batches of certificates. Each helper is kernel-checked before
+  -- its parent uses it; the kernel need not retain one enormous nested proof.
+  let separate := index % 32 == 0
+  let goal ← if separate then original.withContext do
+      let proof ← mkFreshExprSyntheticOpaqueMVar (← original.getType)
+      replaceMainGoal [proof.mvarId!]
+      pure proof.mvarId!
+    else pure original
   let target ← goal.getType
-  let some (_, lhs, rhs) := target.eq? | throwError "expected execution equality"
+  let some (_, lhs, rhs) := target.consumeMData.eq? | throwError "expected execution equality"
   let program ← withMainContext do
     let args := lhs.getAppArgs
     let program ← whnf args.back!
@@ -103,6 +138,12 @@ private partial def checkExecution (geometry : TSyntax ``Parser.Tactic.tacticSeq
     catch error => throwError "Origami instruction {index+1}: {error.toMessageData}"
     checkExecution geometry (index+1)
   else throwError "construction program did not reduce to a finite instruction list"
+  if separate then original.withContext do
+    let proof ← instantiateMVars (mkMVar goal)
+    if proof.hasExprMVar then throwError "primitive certificate contains an unresolved proof obligation"
+    let certificate ← mkAuxTheorem (← instantiateMVars target) proof
+      (kind? := some `origamiReplay) (cache := false)
+    original.assign certificate
 
 /-- Certify a primitive execution from explicitly supplied objects. This is
 useful for universal recipe specifications, whose operands are parameters
@@ -117,8 +158,9 @@ syntax (name := executeCheck) "origami_execute" (" using " tacticSeq)? : tactic
     | none => `(tacticSeq| origami_geometry)
   withMainContext do
     let original ← getMainGoal
-    let some (_, lhs, rhs) := (← original.getType).eq?
+    let some (_, lhs, rhs) := (← original.getType).consumeMData.eq?
       | throwError "expected Program.execute ... = .ok ..."
+    let lhs := lhs.consumeMData
     unless lhs.isAppOf ``Program.execute do
       throwError "expected Program.execute ... = .ok ..."
     let args := lhs.getAppArgs
