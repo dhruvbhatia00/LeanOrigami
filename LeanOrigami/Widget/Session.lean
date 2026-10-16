@@ -1,5 +1,6 @@
 import LeanOrigami.Scalar.FoldDiscovery
 import LeanOrigami.Widget.Execution
+import LeanOrigami.Widget.LibraryDiscovery
 import Lean.Data.Json.FromToJson
 
 /-!
@@ -123,13 +124,14 @@ private def Session.startRecipe (session : Session) (name : String) (recipe : Re
     unless objectKind object == parameter.kind do
       throw s!"Recipe input {parameter.name} has the wrong kind."
   let requirementsHold := recipe.requirements.all (Condition.checkObjects inputs)
-  if requirementsHold && !name.isEmpty && Execution.isMidpoint recipe then
-    let outputs ← Execution.midpointOutputs (K := Scalar) inputs
-    let program : Execution.History Scalar := session.program ++ [Execution.Step.call name recipe arguments outputs []]
-    return { session with
-    program, objects := session.objects ++ outputs,
-      groups := Execution.groups (K := Scalar) session.seeds.length program,
-      result := some session.objects.length, pending := none, failure := none }
+  if requirementsHold && !name.isEmpty then
+    if let some known := LibraryRecipe.recognize recipe then
+      let found ← known.discover LibraryRecipe.chooseRoot inputs
+      let program := session.program ++ [Execution.Step.library name recipe arguments found.outputs]
+      return { session with
+        program, objects := session.objects ++ found.outputs,
+        groups := Execution.groups (K := Scalar) session.seeds.length program,
+        result := some session.objects.length, pending := none, failure := none }
   let inner : Session := {
     seeds := inputs, objects := inputs,
     requirements := recipe.requirements, checks := recipe.checks, outputs := recipe.outputs }
@@ -203,8 +205,8 @@ partial def Session.choose (session : Session) (index : Nat) (retainFailure : Bo
   let some crease := choices[index]? | throw "This fold choice is no longer available."
   session.append (.fold request crease)
 
-/-- Apply a retained call to public inputs. Proved midpoint calls compute only
-their output; other definitions use the same scoped discovery and fallback. -/
+/-- Apply a retained call to public inputs. Unchanged library definitions compute
+public formulas; edited and custom recipes use scoped fold discovery. -/
 def Session.useRecipe (session : Session) (name : String) (recipe : RecipeTemplate)
     (arguments : Array Nat) (retainFailure : Bool := false) : Except String Session := do
   let started ← session.startRecipe name recipe arguments
@@ -246,9 +248,11 @@ def Session.selected (session : Session) (point : Nat) (coordinate : Coordinate)
   return coordinate.get (← (Program.point session.objects ⟨point⟩).mapError errorMessage)
 
 /-- Inspect a completed call in a separate local scope. Recorded choices are
-preserved; optimized midpoint calls reconstruct their small explanation lazily. -/
+preserved; library calls reconstruct their private explanation on demand. -/
 def Session.inspect (session : Session) (index : Nat) : Except String Session := do
-  let some (Execution.Step.call _ recipe arguments _ body) := session.program[index]?
+  let some step := session.program[index]?
+    | throw "Choose a completed recipe call to inspect."
+  let some (_, recipe, arguments, body) := step.callData
     | throw "Choose a completed recipe call to inspect."
   let inputs ← (Composition.select (K := Scalar) session.objects arguments.toList).mapError errorMessage
   if body.isEmpty then
@@ -342,7 +346,8 @@ def Session.view (session : Session) (bits : Nat) : View := Id.run do
   for step in active.program do
     let entry := match step with
       | .primitive instruction => historyStep base instruction
-      | .call name _ arguments _ _ => ⟨"Recipe: " ++ name, arguments, base⟩
+      | .library name _ arguments _ | .call name _ arguments _ _ =>
+        ⟨"Recipe: " ++ name, arguments, base⟩
     history := history.push entry
     base := base + step.outputs.length
   return {

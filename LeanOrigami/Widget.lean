@@ -260,7 +260,7 @@ def interact (request : Interaction) : RequestM (RequestTask Response) := Reques
         let name ← try gate.context.runMetaM gate.locals (validateRecipeName workspace state.name)
           catch error => throw (.invalidParams error.message)
         let recipe ← result (session.template (state.inputs.map fun p => ⟨p.name, p.kind⟩) request.point)
-        source := recipe.source
+        source := LibraryRecipe.templateSource recipe
         pure ("origami_recipe " ++ name ++ " samples (" ++ state.sampleSource ++ ") saved (" ++ source ++ ")")
       | none => do
         let axis ← match request.coordinate with

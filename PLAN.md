@@ -1099,12 +1099,12 @@ still certify the expanded construction through the existing kernel checker.
    branch policies, named outputs, and arithmetic recipes.
 3. **Coordinates and roots (7.6–7.7; complete).** Projections, coordinate and
    distance transfer, square roots, and cube roots with their specifications.
-4. **Angles and integration (7.8–7.9; in progress).** Angle conditions, trisection,
+4. **Angles and integration (7.8–7.9; complete).** Angle conditions, trisection,
    complete integration checks, documentation, and its completion audit.
-5. **Theorem reuse and recipe efficiency (7.10; strategy recorded).** Prioritize
+5. **Theorem reuse and recipe efficiency (7.10; complete).** Prioritize
    compositional certification of existing intuitive recipes using their proved
    theorems. Address this bottleneck before further expensive checkpoint 4
-   validation. Implementation awaits agreement on the concrete interface.
+   validation. The concrete interface was approved and implemented in checkpoints 5A–5B below.
 
 The 2026-10-15 strategy revision brings checkpoint 5 design forward before
 closing checkpoint 4; existing results are retained, not declared complete.
@@ -1153,11 +1153,11 @@ axiom checks passed. The common frame API was extracted and the diff audited.
 No broad phase suite was run. See [the detailed audit](docs/phase-7-measurements.md)
 and [the saved visual demo](LeanOrigamiDemos/Measurements.lean).
 
-Checkpoint 4 is now in progress. Continue through its angle semantics, general
-trisection, integration, and final phase audit before returning the completed
-Phase 7 result. The visual design follow-up remains deferred.
+Checkpoint 4 and the subsequent theorem-reuse work are complete. The angle
+semantics, general trisection, integration, and final Phase 7 audit passed.
+The approved visual design follow-up is Phase 8.
 
-**Checkpoint 4 progress (2026-10-15).** The exact 30°/45°/60° conditions
+**Checkpoint 4 audit (2026-10-15): complete.** The exact 30°/45°/60° conditions
 and their Mathlib interpretations, general trisection geometry, primitive
 execution, branch policy, and widget contract are implemented. The theorem
 proves both unit-distance endpoints lie strictly inside the angle, in order,
@@ -1167,19 +1167,19 @@ constructed intermediates. Four named output objects are available in the GUI.
 
 Complete LSP diagnostics, targeted builds, the full library/test/demo build,
 and live GUI checks have passed. The maintained integration path has passed, including the final default saved
-trisection proof replay (confirmed 2026-10-15). Completion bookkeeping remains
-pending while the theorem-reuse strategy is reviewed. Key transitive
+trisection proof replay (confirmed 2026-10-15). Checkpoint 5B closes the performance follow-up through public-output theorem
+reuse, preserving the original geometric specifications. Key transitive
 axiom audits report only the ordinary Mathlib foundations. See
 [the checkpoint audit](docs/phase-7-angles.md) for validation and limitations.
 
-The 856 primitive instructions are an implementation cost of expanding
-coordinate arithmetic, not a mathematical requirement for trisection. Replay
-now uses direct reference reduction and kernel-checked 32-step proof batches
-to keep memory manageable. Export and widget checking share a finite
-sixteen-million-heartbeat budget. Certification still takes minutes.
-A direct geometric recipe (such as Abe's construction) should replace this
-expansion for visual use, preserving the general angle theorem and explicit
-branch guarantees. Hiding auxiliary objects alone does not address that cost.
+The original 856 primitive instructions are an implementation cost of expanding
+coordinate arithmetic, not a mathematical requirement for trisection. At this
+checkpoint, primitive replay used kernel-checked 32-step proof batches and still
+took minutes. The subsequently approved checkpoint 5 strategy supersedes the
+proposed immediate replacement by a shorter geometric recipe: retain the existing
+proved construction, invoke its theorem on public outputs, and expand private
+folds only for inspection. This removes private replay from normal certification;
+a shorter visual construction remains a possible later improvement.
 The approved Phase 8 UI work remains deferred until Phase 7, including the new
 checkpoint 5, is complete.
 
@@ -1423,9 +1423,8 @@ do not silently defer a listed recipe while marking the phase complete.
 
 #### 7.10 Checkpoint 5 — Theorem reuse and recipe efficiency
 
-**Strategy revised 2026-10-15; documentation only for now.** Pause further
-expensive checkpoint 4 validation and first agree on a compositional recipe
-certificate interface. Preserve existing recipes and geometry proofs. The
+**Strategy revised 2026-10-15; implementation authorized.** The compositional
+interface passed checkpoint 5A. Continue with the library-wide migration below. Preserve existing recipes and geometry proofs. The
 primary goal is to reuse their general theorems, including within nested recipes,
 rather than expand and certify every primitive step on each invocation.
 After demonstrating the interface on a small recipe, apply it to the existing
@@ -1511,9 +1510,8 @@ separately. General arbitrary recipe theorem synthesis is not promised here.
 
 **Complete 2026-10-15.** The approved shared refactor, midpoint demonstration,
 independent proof replay, compatibility checks, and live edit/save/reopen check
-passed. See [the checkpoint audit](docs/phase-7-composition.md). Only midpoint
-currently reuses a registered output theorem; other recipe migrations remain
-in checkpoint 5. The following records the accepted delivery scope.
+passed. See [the checkpoint audit](docs/phase-7-composition.md). At that checkpoint only midpoint reused a registered output theorem; the
+remaining migrations are completed in checkpoint 5B below. The following records the accepted delivery scope.
 
 Deliver one complete example of a recipe
 with public outputs and theorem-based certification, using the existing midpoint
@@ -1616,7 +1614,74 @@ constructibility guarantees, edited-recipe fallback, visual history, and saved
 replay. Record discovery/export/kernel/display costs separately and document
 remaining limitations. Use focused LSP and small regressions during development,
 then run affected integration checks once at the stable checkpoint. Implementation of the shared refactor and the checkpoint 5A demonstration was
-subsequently authorized on 2026-10-15. Other recipe migrations remain later work.
+subsequently authorized on 2026-10-15. The remaining recipe migrations were subsequently authorized as checkpoint 5B below.
+
+##### Checkpoint 5B — all existing library recipes
+
+**Complete 2026-10-15.** Extended the same retained-call interface
+through all six arithmetic operations, four coordinate projections/transfers,
+two distances, square/cube roots, and general trisection. Midpoint remains covered.
+
+1. Derive public-output constructibility rules from the existing execution
+   theorems. Keep validity, exact output identity, root signs/intervals, and
+   both orientations of nondegenerate trisection explicit. Reuse the existing
+   mathematical specifications and avoid duplicating geometric proofs.
+2. Generalize built-in recognition and certificate dispatch as one shared API.
+   Match complete templates; edited or unknown recipes retain primitive fallback.
+   Discover built-in outputs directly, with exact roots as witnesses, without
+   executing private folds. Preserve private expansion for Inspect.
+3. Record the arithmetic and root evidence needed at public boundaries, emit
+   compact theorem applications, and independently check saved proofs. Prevent
+   accidental reduction of large recipe bodies during certification.
+4. Validate small composed examples across each family, relevant zero/sign/domain
+   boundaries, altered-template fallback, all four trisection outputs, and a
+   non-axis or clockwise trisection. Check transitive axioms. Compare discovery,
+   export, proof work and source size; investigate concrete bottlenecks promptly.
+5. Run affected integration checks once stable and live-check discovery,
+   inspection, saving/reopening, and downstream reuse. Keep tests focused and
+   reuse existing examples. Audit organization, obsolete midpoint-only paths,
+   specifications and limits before marking this checkpoint complete.
+
+**Checkpoint 5B / final Phase 7 audit:** all 16 built-ins now use shared exact
+public-output relations and prechecked constructibility theorems. Complete-template
+matching, exact equations and branch bounds bind each call to its outputs. Edited
+and custom recipes retain primitive fallback, including compact nested calls;
+old saved call constructors remain readable. No Hex changes were needed.
+
+Validation passed: whole-file diagnostics, targeted widget builds, the affected
+native integration batch, fresh independent kernel replay, and the browser
+component regression script. The final generated-tactic cleanup was rebuilt and
+all five new library examples regenerated and independently checked without
+generated-proof warnings. Key soundness and end-to-end axiom audits contain only
+`propext`, `Classical.choice`, and `Quot.sound`. Boundary coverage includes zero,
+negative and irrational inputs, invalid domains, changed templates, forged outputs,
+clockwise/translated angles, nested calls, and 128-bit sign bounds. Checkpoint 4's
+earlier full library/test/demo build and integration run remain recorded; this
+migration reran affected checks rather than the entire repository suite.
+
+Live checks passed for the one-call/four-output trisection workspace, clockwise
+sample changes, saved proof reopening, downstream midpoint reuse of an irrational
+endpoint, read-only private inspection, return, submission, saving, and restoring
+the nine-step editable proof with no goals. Only a temporary test buffer was saved;
+the three user buffers and unrelated on-disk edits were preserved.
+
+Final illustrative native timings: right-angle discovery 192 ms / export 193 ms;
+cubic-angle reuse export 2,132 ms. Independent proof elaboration used 131,231 and
+257,748 heartbeats respectively. These exclude cold imports/builds and are not
+kernel-only timing measurements. Private inspection can still expand the original
+856-step explanation; ordinary library invocation and certification do not.
+
+The audit found no proof holes, new trusted axioms, approximate proof evidence,
+or weakened angle domain/specification. Shared discovery and recording formulas
+avoid parallel implementations; library rules, discovery, certificate generation,
+and scalar bounds have separate responsibilities. Tests/demos remain separate.
+LSP MCP transport timeouts required a persistent local Lean server and targeted
+CLI checks; these are not reported as passing MCP calls. Cold import costs and
+automatic universal specifications for arbitrary user recipes remain limitations.
+See [the detailed audit and reproduction commands](docs/phase-7-composition.md).
+
+Return after all families through trisection are complete. No Hex changes,
+Phase 8 redesign, or restriction to acute angles is authorized by this migration.
 
 ### Phase 8 — Visual interaction, navigation, and documentation
 
@@ -1843,16 +1908,15 @@ certification interface. Fix in-scope issues before claiming completion.
 | GUI and proof disagree | Render identified exact objects and replay persisted instructions independently of the GUI. |
 | Scope exceeds the initial week | Report evidence and remaining work; prioritize sound end-to-end milestones without silently dropping agreed requirements. |
 
-Current status: Phase 6, including 6R and 6S, is complete. Phase 7 checkpoints
-1–3 are complete; checkpoint 4's implementation and integration checks passed
-(see [the angle audit](docs/phase-7-angles.md)), with its performance limitations
-retained for checkpoint 5. Checkpoint 5A is complete: scoped public-output calls,
-midpoint theorem reuse, persistent editing, and focused live/kernel checks passed
-(see [the composition audit](docs/phase-7-composition.md)). Broader theorem
-migration, trisection performance work, and the final Phase 7 audit remain open.
-Phase 8 is the approved UI work, Phase 9 is release packaging, and phases 10–11
-cover extension towers and symbolic programs. Previously deferred checks remain
-recorded as deferred, not passing.
+Current status: Phase 6, including 6R and 6S, and Phase 7 checkpoints 1–5
+(including 5A–5B) are complete. All requested recipe families through general
+trisection have their geometry proofs, GUI operations, and compact public-output
+certification. The final affected integration, kernel, compatibility, and live
+save/edit/reopen checks passed. See the [angle audit](docs/phase-7-angles.md) and
+[composition audit](docs/phase-7-composition.md) for evidence and limitations.
+Phase 8 is the approved UI work and has not started; Phase 9 is release packaging,
+and phases 10–11 cover extension towers and symbolic programs. Previously deferred
+checks remain recorded as deferred, not passing.
 
 Phase 5 is complete (2026-10-09), including the shared-program
 repair; see [the audit](docs/phase-5.md).

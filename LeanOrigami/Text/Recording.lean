@@ -1,6 +1,5 @@
 import LeanOrigami.Scalar
 import LeanOrigami.Construction.Checker
-import LeanOrigami.Construction.Midpoint
 import LeanOrigami.Solvers.Candidates
 
 /-!
@@ -95,13 +94,15 @@ private unsafe def powImpl (r : IO.Ref ArithmeticLog) (a : Scalar) (n : Nat) :=
 @[implemented_by invImpl] private def inv (_r : IO.Ref ArithmeticLog) (a : Scalar) := a⁻¹
 @[implemented_by powImpl] private def pow (_r : IO.Ref ArithmeticLog) (a : Scalar) (n : Nat) := a ^ n
 
-private abbrev field (ref : IO.Ref ArithmeticLog) : Field Scalar :=
+/-- Ordinary scalar operations with local arithmetic-provenance hooks. The
+field laws are unchanged; this dictionary is only for certificate preparation. -/
+abbrev field (ref : IO.Ref ArithmeticLog) : Field Scalar :=
   { (inferInstance : Field Scalar) with
     add := add ref, sub := sub ref, mul := mul ref, div := div ref,
     neg := neg ref, inv := inv ref, npow := fun n a => pow ref a n }
 
 /-- Add a selected root only when it is not already known by arithmetic. -/
-private def select (ref : IO.Ref ArithmeticLog) (value : Scalar) : BaseIO Unit :=
+def select (ref : IO.Ref ArithmeticLog) (value : Scalar) : BaseIO Unit :=
   record ref value .root
 
 private def get {α : Type} (result : Except ConstructionError α) : IO α :=
@@ -146,15 +147,6 @@ def step (ref : IO.Ref ArithmeticLog) (state : Program.State Scalar)
           throw (IO.userError "recording: missing intersection arithmetic")
     else throw (IO.userError "recording: parallel intersection")
   return state ++ [object]
-
-/-- Record the public midpoint formula directly. This captures arithmetic
-provenance without constructing or traversing the recipe's auxiliary creases. -/
-def midpoint (ref : IO.Ref ArithmeticLog) (first second : Point Scalar) : IO (Point Scalar) := do
-  let output := @Midpoint.point Scalar (field ref) first second
-  for value in [output.1, output.2] do
-    if (← locate ref value).isNone then
-      throw (IO.userError "recording: missing midpoint arithmetic")
-  return output
 
 /-- Seed a recording with exact rational coordinates such as the original
 points. Nonrational values must already have construction provenance. -/

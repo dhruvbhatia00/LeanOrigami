@@ -46,3 +46,7 @@ lake lean .lake/phase7/TrisectionReplay.lean
 # Retained calls: theorem reuse, edited fallback, and public multi-output proofs.
 lake lean LeanOrigamiTests/CompositionExport.lean -- --run LeanOrigamiTests/CompositionExport.lean
 lake lean .lake/composition/Replay.lean
+
+# Every proved library family, nested calls, and cubic trisection reuse.
+lake lean LeanOrigamiTests/LibraryExport.lean -- --run LeanOrigamiTests/LibraryExport.lean
+lake lean .lake/library/Replay.lean

@@ -1,5 +1,5 @@
 import LeanOrigami.Text.Exact
-import HexNumberFieldMathlib.Approx
+import LeanOrigami.Scalar.Bounds
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
 import Mathlib.Analysis.Real.Sqrt
 import Mathlib.Tactic.NormNum
@@ -57,28 +57,8 @@ coordinate into a new algebraic-number representation. -/
 theorem coordinate_nonneg (field : Scalar.Presentation) (value : field.Coordinates)
     (h : (Hex.PolyQuot.evalRatBall value.coeffs field.isolation.1.square 64).radius ≤
       (Hex.PolyQuot.evalRatBall value.coeffs field.isolation.1.square 64).re) :
-    0 ≤ field.scalar value := by
-  let ball := Hex.PolyQuot.evalRatBall value.coeffs field.isolation.1.square 64
-  have mem : Hex.PolyQuot.toComplex value field.isolation rfl ∈ ball.set :=
-    Hex.DyadicComplexBall.evalRatBall_mem _ _ _
-      (Hex.DyadicComplexBall.mem_toBall
-        (HexRootsMathlib.RefinedIsolation.root_mem_closedDisc field.isolation))
-  have bound : |(Hex.PolyQuot.toComplex value field.isolation rfl).re -
-      HexRootsMathlib.Dyadic.toReal ball.re| ≤ ball.realRadius := by
-    have norm : ‖Hex.PolyQuot.toComplex value field.isolation rfl - ball.center‖ ≤
-        ball.realRadius := by
-      simpa only [Hex.DyadicComplexBall.set, Metric.mem_closedBall, dist_eq_norm] using mem
-    exact (Complex.abs_re_le_norm _).trans norm
-  have radius := HexRootsMathlib.Dyadic.toReal_le_toReal_iff.mpr h
-  apply (Scalar.toReal_le 0 _).mp
-  rw [Scalar.toReal_zero]
-  change 0 ≤ (field.scalar value).val.toComplex.re
-  rw [Scalar.Presentation.scalar_toComplex]
-  have lower := (abs_le.mp bound).1
-  change HexRootsMathlib.Dyadic.toReal ball.radius ≤
-    HexRootsMathlib.Dyadic.toReal ball.re at radius
-  change -HexRootsMathlib.Dyadic.toReal ball.radius ≤ _ at lower
-  linarith
+    0 ≤ field.scalar value :=
+  field.coordinate_nonneg value 64 h
 
 open Lean Meta Elab Tactic Qq
 
@@ -141,6 +121,7 @@ elab "origami_identify " value:term " using " arithmetic:tacticSeq : tactic =>
       evalTactic (← `(tactic|
         (dsimp only [$value:term]
          first
+         | assumption
          | apply coordinate_nonneg; decide +kernel
          | norm_num)))
     | .cubeRoot _ => evalTactic (← `(tactic| norm_num))

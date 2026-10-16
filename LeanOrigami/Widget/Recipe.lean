@@ -291,13 +291,17 @@ def RecipeGroup.source (group : RecipeGroup) : String :=
     (if group.outputs.isEmpty then toString group.output.index else
       "{ index := " ++ toString group.output.index ++ ", names := " ++ arraySource (group.outputs.map RecipeOutput.source) ++ " }") ++ "⟩"
 
-/-- Serialize the small declarative format, without native values or opaque IDs. -/
-partial def RecipeTemplate.source (recipe : RecipeTemplate) : String := Id.run do
+/-- Serialize the declarative format. An optional resolver can name complete,
+known definitions instead of repeating them in nested calls. The default keeps
+full source, including metadata, for exact definition comparisons. -/
+partial def RecipeTemplate.source (recipe : RecipeTemplate)
+    (resolve : RecipeTemplate → Option String := fun _ => none) : String := Id.run do
+  if let some source := resolve recipe then return source
   let parameters := arraySource (recipe.parameters.map fun p =>
     s!"⟨{Lean.Json.compress (Lean.toJson p.name)}, .{if p.kind == .point then "point" else "line"}⟩")
   let steps := recipe.steps.map fun step => match step with
     | .call name nested arguments =>
-      ".call " ++ Lean.Json.compress (Lean.toJson name) ++ " (" ++ nested.source ++ ") " ++
+      ".call " ++ Lean.Json.compress (Lean.toJson name) ++ " (" ++ nested.source resolve ++ ") " ++
         arraySource (arguments.map toString)
     | .intersect l r => s!".intersect ⟨{l.index}⟩ ⟨{r.index}⟩"
     | .fold request =>

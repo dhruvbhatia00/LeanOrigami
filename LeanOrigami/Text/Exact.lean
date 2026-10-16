@@ -41,7 +41,8 @@ elab "origami_coordinates " s:term : tactic => Lean.Elab.Tactic.focus do
      Line.Contains, Line.Perpendicular, Line.perpendicularAlignmentDot,
      Line.reflect, Line.residual, Line.normalSq, Line.chart, Line.horizontal,
      Line.determinant, Line.intersection, Line.pointAt, Line.perpendicularThrough,
-     Line.normalize, Coordinate.get, ne_eq, Prod.ext_iff, Line.ext_iff]
+     Line.normalize, Coordinate.get, ne_eq, Prod.ext_iff, Line.ext_iff,
+     List.cons.injEq, Object.point.injEq, Object.line.injEq, and_true]
    all_goals try simp (disch := run_tac decideCoordinates) only
      [ite_true, ite_false, ite_eq_left, ite_eq_right, Scalar.Presentation.scalar_eq_hom,
      ← map_zero ($s).hom, ← map_one ($s).hom, ← map_ofNat ($s).hom,

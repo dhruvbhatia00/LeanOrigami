@@ -1,7 +1,8 @@
 # Phase 7 checkpoint 4 — angles and trisection
 
-Status: implementation, live checks, and final integration validation passed.
-Completion bookkeeping is pending; Phase 7 now also includes checkpoint 5.
+Status: complete. Implementation, live checks, and final integration validation
+passed. Checkpoint 5B closes the subsequent performance follow-up through
+public-output theorem reuse; see the composition audit.
 
 ## Mathematical meaning and organization
 
@@ -67,6 +68,12 @@ was weakened. Earlier successful script stages are retained when resuming after
 this test-only fix.
 
 ## Performance and remaining limitations
+
+The measurements below describe the original expanded path. Checkpoint 5B adds
+public-output theorem reuse for unchanged library calls; see the
+[composition audit](phase-7-composition.md#checkpoint-5b--all-existing-library-families)
+for its current validation status and separate measurements. The original
+construction remains available for private inspection.
 
 The recipe expands to **856 primitive instructions**. This is the cost of its
 coordinate-arithmetic implementation, not a lower bound on origami trisection.

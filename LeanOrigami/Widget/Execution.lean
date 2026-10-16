@@ -14,9 +14,12 @@ namespace LeanOrigami.Widget
 namespace Execution
 
 /-- Concrete editing history. A proved recipe may omit its internal execution;
-its template still supplies the visual explanation on demand. -/
+a library call keeps only public geometry, while its template supplies the
+visual explanation on demand. Legacy calls remain readable. -/
 inductive Step (K : Type*) [Field K] where
   | primitive (instruction : Instruction K)
+  | library (name : String) (recipe : RecipeTemplate) (arguments : Array Nat)
+      (outputs : Program.State K)
   | call (name : String) (recipe : RecipeTemplate) (arguments : Array Nat)
       (outputs : Program.State K) (body : List (Step K))
 
@@ -27,12 +30,21 @@ abbrev History (K : Type*) [Field K] := List (Step K)
 def Step.outputs {K : Type*} [Field K] : Step K → Program.State K
   | .primitive (.fold _ line) => [.line line]
   | .primitive (.intersect _ _ point) => [.point point]
-  | .call _ _ _ outputs _ => outputs
+  | .library _ _ _ outputs | .call _ _ _ outputs _ => outputs
 
 /-- Erase old sample coordinates while retaining nested calls and local scopes. -/
 def Step.operation {K : Type*} [Field K] : Step K → RecipeOperation
   | .primitive instruction => RecipeOperation.ofInstruction instruction
-  | .call name recipe arguments _ _ => .call name recipe arguments
+  | .library name recipe arguments _ | .call name recipe arguments _ _ =>
+    .call name recipe arguments
+
+/-- Shared editor metadata. Library explanations are reconstructed from their
+saved definition; fallback calls retain their actual private selections. -/
+def Step.callData {K : Type*} [Field K] :
+    Step K → Option (String × RecipeTemplate × Array Nat × History K)
+  | .primitive _ => none
+  | .library name recipe arguments _ => some (name, recipe, arguments, [])
+  | .call name recipe arguments _ body => some (name, recipe, arguments, body)
 
 /-- Import a legacy primitive history without changing any object index. -/
 def ofProgram {K : Type*} [Field K] (program : Program K) : History K :=
@@ -44,7 +56,8 @@ def construction {K : Type*} [Field K] (history : History K) (scope : String := 
     Composition.Construction K :=
   history.zipIdx.map fun (step, index) => match step with
   | .primitive instruction => .primitive instruction
-  | .call _ _ arguments outputs _ => .call (scope ++ toString index) arguments.toList outputs
+  | .library _ _ arguments outputs | .call _ _ arguments outputs _ =>
+    .call (scope ++ toString index) arguments.toList outputs
 
 /-- Reconstruct public objects without expanding calls. This is a display/data
 operation, never evidence that a selected recipe output is correct. -/
@@ -57,7 +70,7 @@ def groups {K : Type*} [Field K] (seedCount : Nat) (history : History K) : Array
   let mut base := seedCount
   let mut groups := #[]
   for (step, index) in history.zipIdx do
-    if let .call name recipe arguments _ _ := step then
+    if let some (name, recipe, arguments, _) := step.callData then
       let indices := recipe.publicOutputs
       let names := recipe.namedOutputs.map fun output =>
         { output with index := base + (indices.findIdx? (· == output.index)).getD 0 }
@@ -69,13 +82,6 @@ def groups {K : Type*} [Field K] (seedCount : Nat) (history : History K) : Array
 Display names do not choose theorem associations. -/
 def isMidpoint (recipe : RecipeTemplate) : Bool := recipe.source == midpointRecipe.source
 
-/-- Fast exact outputs for the first registered recipe. Other recipes continue
-through the shared discovery interpreter and primitive certificate fallback. -/
-def midpointOutputs {K : Type*} [Field K] [DecidableEq K]
-    (inputs : Program.State K) : Except String (Program.State K) := do
-  let [.point first, .point second] := inputs | throw "Midpoint requires two points."
-  if first = second then throw "Choose two distinct points."
-  return [.point (Midpoint.point first second)]
 
 end Execution
 end LeanOrigami.Widget

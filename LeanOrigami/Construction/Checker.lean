@@ -129,7 +129,8 @@ theorem accepts_of_run {program : Program K} {state : State K}
   rfl
 
 omit [LinearOrder K] [IsStrictOrderedRing K] in
-private theorem point_mem {state : State K} {ref : PointRef} {p : Point K}
+/-- Successful point lookup selects an object already present in the state. -/
+theorem point_mem {state : State K} {ref : PointRef} {p : Point K}
     (h : point state ref = .ok p) : Object.point p ∈ state := by
   unfold point at h
   split at h
@@ -138,7 +139,8 @@ private theorem point_mem {state : State K} {ref : PointRef} {p : Point K}
   · cases h
 
 omit [LinearOrder K] [IsStrictOrderedRing K] in
-private theorem line_mem {state : State K} {ref : LineRef} {l : Line K}
+/-- Successful line lookup selects an object already present in the state. -/
+theorem line_mem {state : State K} {ref : LineRef} {l : Line K}
     (h : line state ref = .ok l) : Object.line l ∈ state := by
   unfold line at h
   split at h

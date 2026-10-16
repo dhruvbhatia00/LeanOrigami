@@ -221,9 +221,14 @@ private partial def nestedRequirementViews (session : Session) : Array Requireme
         else status check.condition inner.objects⟩)
   let mut views := #[]
   for step in session.program do
-    if let Execution.Step.call name recipe arguments _ body := step then
+    if let some (name, recipe, arguments, body) := step.callData then
       if let .ok inputs := Composition.select session.objects arguments.toList then
-        if let .ok objects := Execution.replay inputs body then
+        if let .library .. := step then
+          -- Private branch conditions are certified by the library relation;
+          -- they have no private object indices in this public scope.
+          let inner : Session := { seeds := inputs, objects := inputs }
+          views := views ++ describe name { recipe with checks := #[] } inner
+        else if let .ok objects := Execution.replay inputs body then
           let inner : Session := { seeds := inputs, objects, program := body }
           views := views ++ describe name recipe inner ++ nestedRequirementViews inner
   if let some cursor := session.running then

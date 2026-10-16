@@ -282,10 +282,17 @@ recipe's auxiliary points and creases stay in its private scope. Use **Inspect**
 in the history to view that scope, including nested calls; **Return to
 construction** restores the caller. Inspection is read only.
 
-Unchanged midpoint calls compute just the midpoint and use a reusable theorem
-when saved. Edited definitions use the ordinary primitive checker, including any
-retained calls inside their bodies. The exact definition selects the theorem;
-renaming a call does not establish a theorem about a different recipe. General
+Unchanged library calls compute only their public outputs and use prechecked
+execution theorems when saved. This includes midpoint, arithmetic, coordinate
+projections/transfers, distances, square/cube roots, and trisection. The exported
+proof checks the input frame, domain conditions, exact outputs, and any root
+branch witnesses. Trisection exposes two points and two creases, with no private
+folds in the caller's certificate. Its original construction remains available
+through Inspect.
+
+Edited definitions use the ordinary primitive checker, including compact library
+calls inside their bodies. The complete definition selects the theorem; renaming
+a call does not establish a theorem about a different recipe. General
 user-declared output specifications still need their separate proofs.
 
 New proof saves use `origami composed (...)`. Existing `origami saved (...)`

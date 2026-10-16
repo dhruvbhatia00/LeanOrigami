@@ -1,16 +1,18 @@
 import LeanOrigami.Widget.Execution
+import LeanOrigami.Widget.LibraryRules
 
 /-!
 # Certificates tied to saved recipe definitions
 
 Every call's rule is derived from its saved definition and private history.
-The midpoint shortcut requires equality with the complete registered template.
-Other calls certify their actual local execution, including nested calls, and
-export only selected outputs. Editable names never select mathematical rules.
+Library calls prove equality with a complete known definition and reuse its
+public-output theorem. Fallback calls certify their local execution, including
+nested calls. The original midpoint rule remains readable in earlier saves. Editable names never select mathematical rules.
 -/
 
 namespace LeanOrigami.Widget.Execution
-open Composition
+open LeanOrigami.Composition
+section Generic
 variable {K : Type*} [Field K] [LinearOrder K] [IsStrictOrderedRing K]
 
 /-- A call either uses the registered midpoint theorem or certifies its recorded
@@ -33,12 +35,28 @@ def callRule (recipe : RecipeTemplate) (body : History K)
 def lookupRules (rules : List (String × RecipeRule K)) : Registry K :=
   fun identity => (rules.find? (fun entry => entry.1 == identity)).map Prod.snd
 
+end Generic
+
+variable {K : Type} [Field K] [LinearOrder K] [IsStrictOrderedRing K]
+
+/-- A compact call names a complete library definition and supplies its exact
+public-output relation. Matching the definition is part of the checked proof;
+editable display names do not select a theorem. -/
+def libraryRule (recipe : RecipeTemplate) : RecipeRule K where
+  Produces inputs outputs :=
+    ∃ known : LibraryRecipe, recipe = known.template ∧ known.Produces inputs outputs
+  sound f inputs outputs produced available := by
+    obtain ⟨known, _, produced⟩ := produced
+    exact (known.rule (K := K)).sound f inputs outputs produced available
+
+
 mutual
 
 /-- A node derives its own rule from its saved definition and child history. -/
 def stepRule (step : Step K) : Option (RecipeRule K) :=
   match step with
   | .primitive _ => none
+  | .library _ recipe _ _ => some (libraryRule recipe)
   | .call _ recipe _ _ body => some (callRule recipe body (lookupRules (rules body)))
 termination_by structural step
 
